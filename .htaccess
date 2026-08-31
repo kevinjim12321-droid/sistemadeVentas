@@ -1,0 +1,8 @@
+Options -Indexes
+<FilesMatch "(?i)(^\.|\.(sql|log|bak|zip|md|lock)$)">
+    Require all denied
+</FilesMatch>
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(?:application|system|database|license)(?:/|$) - [F,L]
+</IfModule>

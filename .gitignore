@@ -1,0 +1,14 @@
+application/config/hosting.local.php
+.env
+.env.*
+*.zip
+*.bak
+*.log
+application/logs/*
+!application/logs/index.html
+application/cache/*
+!application/cache/index.html
+application/libraries/mpdf/tmp/*
+.DS_Store
+.idea/
+.vscode/
