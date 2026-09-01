@@ -93,6 +93,63 @@ class Inventory_lot extends MY_Model
 		return $this->db->get()->result();
 	}
 
+	/**
+	 * Available stock while editing a completed sale. The original movements
+	 * will be reversed when the edit is saved, so their quantities are added
+	 * back only for this preview/validation query.
+	 */
+	public function get_available_lots_for_sale_edit($item_id, $variation_id, $location_id, $sale_id, $policy = self::POLICY_FEFO)
+	{
+		$this->db->select('inventory_lots.*');
+		$this->db->select('inventory_lots.quantity_remaining - COALESCE(SUM(inventory_lot_movements.quantity_delta), 0) AS effective_quantity_remaining', FALSE);
+		$this->db->from('inventory_lots');
+		$this->db->join('inventory_lot_movements', 'inventory_lot_movements.lot_id = inventory_lots.lot_id AND inventory_lot_movements.sale_id = '.(int)$sale_id." AND inventory_lot_movements.movement_type IN ('sale','return')", 'left', FALSE);
+		$this->db->where('inventory_lots.item_id', (int)$item_id);
+		if ($variation_id)
+		{
+			$this->db->where('inventory_lots.item_variation_id', (int)$variation_id);
+		}
+		else
+		{
+			$this->db->where('inventory_lots.item_variation_id IS NULL', NULL, FALSE);
+		}
+		$this->db->where('inventory_lots.location_id', (int)$location_id);
+		$this->db->where('inventory_lots.status !=', self::STATUS_BLOCKED);
+		$this->db->group_by('inventory_lots.lot_id');
+		$this->db->having('effective_quantity_remaining >', 0);
+		if (strtoupper($policy) === self::POLICY_FIFO)
+		{
+			$this->db->order_by('inventory_lots.received_at', 'ASC');
+		}
+		else
+		{
+			$this->db->order_by('(inventory_lots.expire_date IS NULL)', 'ASC', FALSE);
+			$this->db->order_by('inventory_lots.expire_date', 'ASC');
+			$this->db->order_by('inventory_lots.received_at', 'ASC');
+		}
+		$this->db->order_by('inventory_lots.lot_id', 'ASC');
+		$lots = $this->db->get()->result();
+		foreach ($lots as $lot)
+		{
+			$lot->quantity_remaining = (float)$lot->effective_quantity_remaining;
+		}
+		return $lots;
+	}
+
+	public function get_sale_line_lot($sale_id, $sale_line)
+	{
+		$this->db->select('inventory_lots.*');
+		$this->db->select('ABS(SUM(inventory_lot_movements.quantity_delta)) AS sale_quantity', FALSE);
+		$this->db->from('inventory_lot_movements');
+		$this->db->join('inventory_lots', 'inventory_lots.lot_id = inventory_lot_movements.lot_id');
+		$this->db->where('inventory_lot_movements.sale_id', (int)$sale_id);
+		$this->db->where('inventory_lot_movements.sale_line', (int)$sale_line);
+		$this->db->where('inventory_lot_movements.movement_type', 'sale');
+		$this->db->group_by('inventory_lots.lot_id');
+		$lots = $this->db->get()->result();
+		return count($lots) === 1 ? $lots[0] : FALSE;
+	}
+
 	public function get_item_lots($item_id, $location_id)
 	{
 		$this->db->select('inventory_lots.*, item_variations.name AS variation_name');

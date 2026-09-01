@@ -139,6 +139,7 @@ class PHPPOSCartSale extends PHPPOSCart
 		$CI->load->model('Tier');
 		$CI->load->model('Customer');
 		$CI->load->model('Item_modifier');
+		$CI->load->model('Inventory_lot');
 		$cart = new PHPPOSCartSale(array('sale_id' => $sale_id,'cart_id' => $cart_id,'mode' => 'sale','is_editing_previous' => $is_editing_previous));
 		$sale_info = $CI->Sale->get_info($sale_id)->row_array();
 		$work_order_info = $CI->Work_order->get_info_by_sale_id($sale_id)->row_array();
@@ -269,6 +270,14 @@ class PHPPOSCartSale extends PHPPOSCart
 			}			
 			$item_props['quantity_unit_id'] = $row->items_quantity_units_id;
 			$item_props['quantity_unit_quantity'] = $row->unit_quantity;
+
+			$line_lot = $CI->Inventory_lot->get_sale_line_lot($sale_id, $row->line);
+			if ($line_lot)
+			{
+				$item_props['selected_lot_id'] = (int)$line_lot->lot_id;
+				$item_props['selected_lot_code'] = $line_lot->lot_code;
+				$item_props['selected_lot_quantity_available'] = (float)$line_lot->quantity_remaining + (float)$line_lot->sale_quantity;
+			}
 						
 			//Sale or layaway or we aren't editing a previous sale then we want to show cost price in db
 			if($sale_info['suspended'] <=1 || !$is_editing_previous || $CI->config->item('dont_recalculate_cost_price_when_unsuspending_estimates'))

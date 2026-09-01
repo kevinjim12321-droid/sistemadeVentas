@@ -1301,10 +1301,25 @@ class Sales extends Secure_area
 				$location_id = $this->cart->location_id ? $this->cart->location_id : $this->Employee->get_logged_in_employee_current_location_id();
 				$item_variation_id = $item->variation_id ? (int)$item->variation_id : NULL;
 				$lot_variation_id = $lot && $lot->item_variation_id ? (int)$lot->item_variation_id : NULL;
+				$lot_available_during_edit = FALSE;
+				if ($lot && $this->cart->is_editing_previous && $this->cart->get_previous_receipt_id())
+				{
+					$item_info = $this->Item->get_info($item->item_id);
+					$policy = $item_info->lot_allocation_policy === Inventory_lot::POLICY_FIFO ? Inventory_lot::POLICY_FIFO : Inventory_lot::POLICY_FEFO;
+					$editable_lots = $this->Inventory_lot->get_available_lots_for_sale_edit($item->item_id, $item->variation_id, $location_id, $this->cart->get_previous_receipt_id(), $policy);
+					foreach ($editable_lots as $editable_lot)
+					{
+						if ((int)$editable_lot->lot_id === (int)$lot->lot_id)
+						{
+							$lot_available_during_edit = TRUE;
+							break;
+						}
+					}
+				}
 
 				if (!$lot || (int)$lot->item_id !== (int)$item->item_id || $lot_variation_id !== $item_variation_id ||
-					(int)$lot->location_id !== (int)$location_id || $lot->status !== Inventory_lot::STATUS_ACTIVE ||
-					($lot->expire_date && $lot->expire_date < date('Y-m-d')))
+					(int)$lot->location_id !== (int)$location_id || (!$lot_available_during_edit && ($lot->status !== Inventory_lot::STATUS_ACTIVE ||
+					($lot->expire_date && $lot->expire_date < date('Y-m-d')))))
 				{
 					$item->selected_lot_id = $item_before_edit->selected_lot_id;
 					$data['error'] = 'El lote seleccionado no está disponible para este artículo.';
@@ -1592,7 +1607,9 @@ class Sales extends Secure_area
 
 		$location_id = $this->cart->location_id ? $this->cart->location_id : $this->Employee->get_logged_in_employee_current_location_id();
 		$policy = $item_info->lot_allocation_policy === Inventory_lot::POLICY_FIFO ? Inventory_lot::POLICY_FIFO : Inventory_lot::POLICY_FEFO;
-		$lots = $this->Inventory_lot->get_available_lots($item->item_id, $item->variation_id, $location_id, $policy);
+		$lots = $this->cart->is_editing_previous && $this->cart->get_previous_receipt_id()
+			? $this->Inventory_lot->get_available_lots_for_sale_edit($item->item_id, $item->variation_id, $location_id, $this->cart->get_previous_receipt_id(), $policy)
+			: $this->Inventory_lot->get_available_lots($item->item_id, $item->variation_id, $location_id, $policy);
 		if (!$lots)
 		{
 			return 'No hay lotes disponibles para este artículo.';
