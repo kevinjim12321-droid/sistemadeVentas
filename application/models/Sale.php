@@ -1425,14 +1425,10 @@ class Sale extends MY_Model
 				if ($should_update_inventory && !$cur_item_info->is_service && !empty($cur_item_info->track_inventory_lots) && $base_quantity_to_allocate > 0)
 				{
 					$allocation_policy = $cur_item_info->lot_allocation_policy === Inventory_lot::POLICY_FIFO ? Inventory_lot::POLICY_FIFO : Inventory_lot::POLICY_FEFO;
-					$allocations = $this->Inventory_lot->allocate(
-						$item->item_id,
-						$item->variation_id ? $item->variation_id : NULL,
-						$sales_data['location_id'],
-						$base_quantity_to_allocate,
-						array('movement_type' => 'sale', 'sale_id' => $sale_id, 'sale_line' => $line, 'employee_id' => $employee_id),
-						$allocation_policy
-					);
+					$allocation_context = array('movement_type' => 'sale', 'sale_id' => $sale_id, 'sale_line' => $line, 'employee_id' => $employee_id);
+					$allocations = !empty($item->selected_lot_id)
+						? $this->Inventory_lot->allocate_from_lot($item->selected_lot_id, $item->item_id, $item->variation_id ? $item->variation_id : NULL, $sales_data['location_id'], $base_quantity_to_allocate, $allocation_context)
+						: $this->Inventory_lot->allocate($item->item_id, $item->variation_id ? $item->variation_id : NULL, $sales_data['location_id'], $base_quantity_to_allocate, $allocation_context, $allocation_policy);
 
 					if ($allocations === FALSE)
 					{

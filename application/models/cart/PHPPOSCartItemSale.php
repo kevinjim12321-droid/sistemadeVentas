@@ -18,6 +18,9 @@ class PHPPOSCartItemSale extends PHPPOSCartItem
 	public $tier_id;
 	public $tier_name;
 	public $damaged_qty;
+	public $selected_lot_id;
+	public $selected_lot_code;
+	public $selected_lot_quantity_available;
 	
 	public $rule = array();
 	

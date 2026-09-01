@@ -296,6 +296,57 @@ class Inventory_lot extends MY_Model
 		return $allocations;
 	}
 
+	public function allocate_from_lot($lot_id, $item_id, $variation_id, $location_id, $quantity, $context = array())
+	{
+		$quantity = (float)$quantity;
+		if ($quantity <= 0)
+		{
+			return array();
+		}
+
+		$this->db->trans_begin();
+		$sql = "SELECT * FROM {$this->db->dbprefix('inventory_lots')} WHERE lot_id = ? FOR UPDATE";
+		$lot = $this->db->query($sql, array((int)$lot_id))->row();
+		$expected_variation = $variation_id ? (int)$variation_id : NULL;
+		$lot_variation = $lot && $lot->item_variation_id ? (int)$lot->item_variation_id : NULL;
+
+		if (!$lot || (int)$lot->item_id !== (int)$item_id || $lot_variation !== $expected_variation ||
+			(int)$lot->location_id !== (int)$location_id || $lot->status !== self::STATUS_ACTIVE ||
+			($lot->expire_date && $lot->expire_date < date('Y-m-d')) ||
+			(float)$lot->quantity_remaining + 0.0000000001 < $quantity)
+		{
+			$this->db->trans_rollback();
+			return FALSE;
+		}
+
+		$new_balance = (float)$lot->quantity_remaining - $quantity;
+		$this->db->where('lot_id', (int)$lot->lot_id);
+		$this->db->update('inventory_lots', array(
+			'quantity_remaining' => $this->decimal(max(0, $new_balance)),
+			'status' => $new_balance <= 0.0000000001 ? self::STATUS_DEPLETED : self::STATUS_ACTIVE,
+			'updated_at' => date('Y-m-d H:i:s'),
+		));
+
+		$this->record_movement($lot->lot_id, isset($context['movement_type']) ? $context['movement_type'] : 'sale', -$quantity, max(0, $new_balance), $context);
+		$allocation = array(array(
+			'lot_id' => (int)$lot->lot_id,
+			'lot_code' => $lot->lot_code,
+			'quantity' => $this->decimal($quantity),
+			'unit_cost' => $lot->unit_cost,
+			'unit_price' => $lot->unit_price,
+			'expire_date' => $lot->expire_date,
+		));
+
+		if ($this->db->trans_status() === FALSE)
+		{
+			$this->db->trans_rollback();
+			return FALSE;
+		}
+
+		$this->db->trans_commit();
+		return $allocation;
+	}
+
 	public function can_rebuild_receiving($receiving_id)
 	{
 		$this->db->select('inventory_lot_movements.movement_id');

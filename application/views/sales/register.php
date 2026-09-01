@@ -334,6 +334,35 @@ if ($this->Location->get_info_for_key('enable_credit_card_processing') && $this-
 													<?php } ?>
 
 													<?php
+													if (isset($item->item_id)) {
+														$lot_item_info = $this->Item->get_info($item->item_id);
+														if (!empty($lot_item_info->track_inventory_lots) && $item->quantity > 0) {
+															$lot_location_id = $cart->location_id ? $cart->location_id : $this->Employee->get_logged_in_employee_current_location_id();
+															$lot_policy = $lot_item_info->lot_allocation_policy === Inventory_lot::POLICY_FIFO ? Inventory_lot::POLICY_FIFO : Inventory_lot::POLICY_FEFO;
+															$available_lots = $this->Inventory_lot->get_available_lots($item->item_id, $item->variation_id, $lot_location_id, $lot_policy);
+															$lot_source = array();
+															foreach ($available_lots as $available_lot) {
+																$lot_source[] = array(
+																	'value' => (int)$available_lot->lot_id,
+																	'text' => $available_lot->lot_code.' — '.to_currency($available_lot->unit_price).' — Disponible: '.to_quantity($available_lot->quantity_remaining)
+																);
+															}
+													?>
+														<dt>Lote / precio de venta</dt>
+														<dd><a href="#" id="selected_lot_<?php echo $line; ?>" data-name="selected_lot_id" data-type="select" data-pk="1" data-url="<?php echo site_url('sales/edit_item/' . $line); ?>" data-title="Seleccione el lote"><?php echo H($item->selected_lot_code).' — '.to_currency($item->unit_price).' — Disponible: '.to_quantity($item->selected_lot_quantity_available); ?></a></dd>
+														<script>
+															$('#selected_lot_<?php echo $line; ?>').editable({
+																value: <?php echo json_encode((int)$item->selected_lot_id); ?>,
+																source: <?php echo json_encode($lot_source); ?>,
+																success: function(response) { $('#register_container').html(response); }
+															});
+														</script>
+													<?php
+														}
+													}
+													?>
+
+													<?php
 													if (property_exists($item, 'quantity_units') && count($item->quantity_units) > 0) { ?>
 														<dt class=""><?php echo lang('common_quantity_units'); ?> </dt>
 														<dd class="">

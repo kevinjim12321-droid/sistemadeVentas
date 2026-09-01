@@ -52,6 +52,7 @@ class Sales extends Secure_area
 		$this->load->model('Work_order');
 		$this->load->helper('text');
 		$this->load->model('Supplier');
+		$this->load->model('Inventory_lot');
 		
 		$this->cart = PHPPOSCartSale::get_instance('sale');
 		cache_item_and_item_kit_cart_info($this->cart->get_items());
@@ -1292,6 +1293,47 @@ class Sales extends Secure_area
 
 			}else{
 				$item->$variable = $$variable;
+			}
+
+			if ($variable == 'selected_lot_id')
+			{
+				$lot = $this->Inventory_lot->get_lot($selected_lot_id);
+				$location_id = $this->cart->location_id ? $this->cart->location_id : $this->Employee->get_logged_in_employee_current_location_id();
+				$item_variation_id = $item->variation_id ? (int)$item->variation_id : NULL;
+				$lot_variation_id = $lot && $lot->item_variation_id ? (int)$lot->item_variation_id : NULL;
+				$multiplier = $item->quantity_unit_quantity !== NULL ? (float)$item->quantity_unit_quantity : 1;
+				$required_quantity = (float)$item->quantity * $multiplier;
+
+				if (!$lot || (int)$lot->item_id !== (int)$item->item_id || $lot_variation_id !== $item_variation_id ||
+					(int)$lot->location_id !== (int)$location_id || $lot->status !== Inventory_lot::STATUS_ACTIVE ||
+					($lot->expire_date && $lot->expire_date < date('Y-m-d')) || (float)$lot->quantity_remaining + 0.0000000001 < $required_quantity)
+				{
+					$item->selected_lot_id = $item_before_edit->selected_lot_id;
+					$data['error'] = 'El lote seleccionado no tiene existencia suficiente para esta cantidad.';
+					$this->cart->save();
+					$this->_reload($data);
+					return;
+				}
+
+				$item->selected_lot_code = $lot->lot_code;
+				$item->selected_lot_quantity_available = (float)$lot->quantity_remaining;
+				$item->unit_price = ($lot->unit_price !== NULL ? (float)$lot->unit_price : (float)$item->regular_price) * $multiplier;
+				$item->cost_price = (float)$lot->unit_cost * $multiplier;
+				$item->has_edit_price = FALSE;
+			}
+
+			if ($variable == 'quantity' && !empty($item->selected_lot_id) && $item->quantity > 0)
+			{
+				$lot = $this->Inventory_lot->get_lot($item->selected_lot_id);
+				$multiplier = $item->quantity_unit_quantity !== NULL ? (float)$item->quantity_unit_quantity : 1;
+				if (!$lot || ((float)$item->quantity * $multiplier) > (float)$lot->quantity_remaining + 0.0000000001)
+				{
+					$item->quantity = $item_before_edit->quantity;
+					$data['error'] = 'La cantidad supera la existencia disponible del lote seleccionado.';
+					$this->cart->save();
+					$this->_reload($data);
+					return;
+				}
 			}
 			
 			if ($variable == 'quantity')
