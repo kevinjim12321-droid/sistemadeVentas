@@ -271,7 +271,7 @@ class PHPPOSCartSale extends PHPPOSCart
 			$item_props['quantity_unit_id'] = $row->items_quantity_units_id;
 			$item_props['quantity_unit_quantity'] = $row->unit_quantity;
 
-			$line_lot = $CI->Inventory_lot->get_sale_line_lot($sale_id, $row->line);
+			$line_lot = $is_editing_previous ? $CI->Inventory_lot->get_sale_line_lot($sale_id, $row->line) : FALSE;
 			if ($line_lot)
 			{
 				$item_props['selected_lot_id'] = (int)$line_lot->lot_id;
