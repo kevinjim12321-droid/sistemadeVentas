@@ -151,12 +151,14 @@ class Inventory_lot extends MY_Model
 
 	public function get_sale_line_lot($sale_id, $sale_line)
 	{
-		$sql = "SELECT l.*, m.quantity_delta
-			FROM {$this->db->dbprefix('inventory_lot_movements')} m
-			INNER JOIN {$this->db->dbprefix('inventory_lots')} l ON l.lot_id = m.lot_id
-			WHERE m.sale_id = ? AND m.sale_line = ? AND m.movement_type = 'sale'
-			ORDER BY m.movement_id ASC";
-		$lots = $this->db->query($sql, array((int)$sale_id, (int)$sale_line))->result();
+		$this->db->select('inventory_lots.*');
+		$this->db->select('inventory_lot_movements.quantity_delta');
+		$this->db->from('inventory_lot_movements');
+		$this->db->join('inventory_lots', 'inventory_lots.lot_id = inventory_lot_movements.lot_id');
+		$this->db->where('inventory_lot_movements.sale_id', (int)$sale_id);
+		$this->db->where('inventory_lot_movements.sale_line', (int)$sale_line);
+		$this->db->where('inventory_lot_movements.movement_type', 'sale');
+		$lots = $this->db->get()->result();
 		if (!$lots)
 		{
 			return FALSE;
