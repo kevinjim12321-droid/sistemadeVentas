@@ -1301,35 +1301,27 @@ class Sales extends Secure_area
 				$location_id = $this->cart->location_id ? $this->cart->location_id : $this->Employee->get_logged_in_employee_current_location_id();
 				$item_variation_id = $item->variation_id ? (int)$item->variation_id : NULL;
 				$lot_variation_id = $lot && $lot->item_variation_id ? (int)$lot->item_variation_id : NULL;
-				$multiplier = $item->quantity_unit_quantity !== NULL ? (float)$item->quantity_unit_quantity : 1;
-				$required_quantity = (float)$item->quantity * $multiplier;
 
 				if (!$lot || (int)$lot->item_id !== (int)$item->item_id || $lot_variation_id !== $item_variation_id ||
 					(int)$lot->location_id !== (int)$location_id || $lot->status !== Inventory_lot::STATUS_ACTIVE ||
-					($lot->expire_date && $lot->expire_date < date('Y-m-d')) || (float)$lot->quantity_remaining + 0.0000000001 < $required_quantity)
+					($lot->expire_date && $lot->expire_date < date('Y-m-d')))
 				{
 					$item->selected_lot_id = $item_before_edit->selected_lot_id;
-					$data['error'] = 'El lote seleccionado no tiene existencia suficiente para esta cantidad.';
+					$data['error'] = 'El lote seleccionado no está disponible para este artículo.';
 					$this->cart->save();
 					$this->_reload($data);
 					return;
 				}
-
-				$item->selected_lot_code = $lot->lot_code;
-				$item->selected_lot_quantity_available = (float)$lot->quantity_remaining;
-				$item->unit_price = ($lot->unit_price !== NULL ? (float)$lot->unit_price : (float)$item->regular_price) * $multiplier;
-				$item->cost_price = (float)$lot->unit_cost * $multiplier;
-				$item->has_edit_price = FALSE;
 			}
 
-			if ($variable == 'quantity' && !empty($item->selected_lot_id) && $item->quantity > 0)
+			if (($variable == 'selected_lot_id' || $variable == 'quantity') && $item->quantity > 0)
 			{
-				$lot = $this->Inventory_lot->get_lot($item->selected_lot_id);
-				$multiplier = $item->quantity_unit_quantity !== NULL ? (float)$item->quantity_unit_quantity : 1;
-				if (!$lot || ((float)$item->quantity * $multiplier) > (float)$lot->quantity_remaining + 0.0000000001)
+				$preferred_lot_id = $variable == 'selected_lot_id' ? $selected_lot_id : $item->selected_lot_id;
+				$distribution_error = $this->_distribute_sale_item_across_lots($item, $preferred_lot_id);
+				if ($distribution_error)
 				{
-					$item->quantity = $item_before_edit->quantity;
-					$data['error'] = 'La cantidad supera la existencia disponible del lote seleccionado.';
+					$this->cart->replace($line, $item_before_edit);
+					$data['error'] = $distribution_error;
 					$this->cart->save();
 					$this->_reload($data);
 					return;
@@ -1572,6 +1564,105 @@ class Sales extends Secure_area
 		
 		$this->cart->save();
 		$this->_reload($data);
+	}
+
+	/**
+	 * Split a positive sale quantity over the preferred lot first and then
+	 * over the remaining FIFO/FEFO lots. Each lot keeps its own sale price.
+	 */
+	private function _distribute_sale_item_across_lots($item, $preferred_lot_id = NULL)
+	{
+		$item_info = $this->Item->get_info($item->item_id);
+		if (!$item_info || $item_info->is_service || empty($item_info->track_inventory_lots))
+		{
+			return FALSE;
+		}
+
+		$multiplier = $item->quantity_unit_quantity !== NULL ? (float)$item->quantity_unit_quantity : 1;
+		if ($multiplier <= 0)
+		{
+			$multiplier = 1;
+		}
+
+		$required_quantity = (float)$item->quantity * $multiplier;
+		if ($required_quantity <= 0)
+		{
+			return FALSE;
+		}
+
+		$location_id = $this->cart->location_id ? $this->cart->location_id : $this->Employee->get_logged_in_employee_current_location_id();
+		$policy = $item_info->lot_allocation_policy === Inventory_lot::POLICY_FIFO ? Inventory_lot::POLICY_FIFO : Inventory_lot::POLICY_FEFO;
+		$lots = $this->Inventory_lot->get_available_lots($item->item_id, $item->variation_id, $location_id, $policy);
+		if (!$lots)
+		{
+			return 'No hay lotes disponibles para este artículo.';
+		}
+
+		$reserved = array();
+		foreach ($this->cart->get_items() as $cart_item)
+		{
+			if ($cart_item === $item || !($cart_item instanceof PHPPOSCartItemSale) || $cart_item->quantity <= 0 || empty($cart_item->selected_lot_id))
+			{
+				continue;
+			}
+			$cart_multiplier = $cart_item->quantity_unit_quantity !== NULL ? (float)$cart_item->quantity_unit_quantity : 1;
+			$lot_id = (int)$cart_item->selected_lot_id;
+			$reserved[$lot_id] = isset($reserved[$lot_id]) ? $reserved[$lot_id] + ((float)$cart_item->quantity * $cart_multiplier) : ((float)$cart_item->quantity * $cart_multiplier);
+		}
+
+		if ($preferred_lot_id)
+		{
+			usort($lots, function($a, $b) use ($preferred_lot_id)
+			{
+				if ((int)$a->lot_id === (int)$preferred_lot_id) return -1;
+				if ((int)$b->lot_id === (int)$preferred_lot_id) return 1;
+				return 0;
+			});
+		}
+
+		$allocations = array();
+		$remaining = $required_quantity;
+		foreach ($lots as $lot)
+		{
+			$available = max(0, (float)$lot->quantity_remaining - (isset($reserved[(int)$lot->lot_id]) ? $reserved[(int)$lot->lot_id] : 0));
+			if ($available <= 0.0000000001)
+			{
+				continue;
+			}
+
+			$taken = min($available, $remaining);
+			$allocations[] = array('lot' => $lot, 'quantity' => $taken, 'available' => $available);
+			$remaining -= $taken;
+			if ($remaining <= 0.0000000001)
+			{
+				break;
+			}
+		}
+
+		if ($remaining > 0.0000000001)
+		{
+			return 'La cantidad solicitada supera la existencia total disponible en los lotes.';
+		}
+
+		foreach ($allocations as $index => $allocation)
+		{
+			$target = $index === 0 ? $item : clone $item;
+			$lot = $allocation['lot'];
+			$target->uniq = time().' '.uniqid();
+			$target->quantity = $allocation['quantity'] / $multiplier;
+			$target->selected_lot_id = (int)$lot->lot_id;
+			$target->selected_lot_code = $lot->lot_code;
+			$target->selected_lot_quantity_available = $allocation['available'];
+			$target->unit_price = ($lot->unit_price !== NULL ? (float)$lot->unit_price : (float)$target->regular_price) * $multiplier;
+			$target->cost_price = (float)$lot->unit_cost * $multiplier;
+			$target->has_edit_price = FALSE;
+			if ($index > 0)
+			{
+				$this->cart->add_item($target);
+			}
+		}
+
+		return FALSE;
 	}
 	
 	function delete_item($item_line)
