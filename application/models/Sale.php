@@ -731,6 +731,7 @@ class Sale extends MY_Model
 	function save($cart)
 	{	
 		$this->load->model('Sale_types');
+		$this->load->model('Inventory_lot');
 		$series_to_add = array();
 		
 		$exchange_rate = $cart->get_exchange_rate() ? $cart->get_exchange_rate() : 1;
@@ -987,6 +988,12 @@ class Sale extends MY_Model
 		 
 		if ($sale_id)
 		{
+			if (!$this->Inventory_lot->restore_sale_allocations($sale_id))
+			{
+				$this->db->trans_rollback();
+				return -1;
+			}
+
 			//Delete previoulsy sale so we can overwrite data
 			$this->delete($sale_id, true);
 			
@@ -1411,6 +1418,60 @@ class Sale extends MY_Model
 						unset($cur_item_variation_location_info);
 					}
 				}
+				$should_update_inventory = (((!$cart->is_ecommerce && $suspended < 2) || ($this->config->item('import_ecommerce_orders_suspended') && $suspended < 2)) || (!$cart->is_ecommerce && $this->Sale_types->can_remove_quantity($suspended)) || ($cart->is_ecommerce && $this->config->item('import_ecommerce_orders_suspended')));
+				$quantity_multiplier = $item->quantity_unit_quantity !== NULL ? (float)$item->quantity_unit_quantity : 1;
+				$base_quantity_to_allocate = (float)$item->quantity * $quantity_multiplier;
+
+				if ($should_update_inventory && !$cur_item_info->is_service && !empty($cur_item_info->track_inventory_lots) && $base_quantity_to_allocate > 0)
+				{
+					$allocation_policy = $cur_item_info->lot_allocation_policy === Inventory_lot::POLICY_FIFO ? Inventory_lot::POLICY_FIFO : Inventory_lot::POLICY_FEFO;
+					$allocations = $this->Inventory_lot->allocate(
+						$item->item_id,
+						$item->variation_id ? $item->variation_id : NULL,
+						$sales_data['location_id'],
+						$base_quantity_to_allocate,
+						array('movement_type' => 'sale', 'sale_id' => $sale_id, 'sale_line' => $line, 'employee_id' => $employee_id),
+						$allocation_policy
+					);
+
+					if ($allocations === FALSE)
+					{
+						$this->db->trans_rollback();
+						return -1;
+					}
+
+					$allocated_cost = 0;
+					foreach ($allocations as $allocation)
+					{
+						$allocated_cost += (float)$allocation['quantity'] * (float)$allocation['unit_cost'];
+					}
+					$cost_price = ($allocated_cost / $base_quantity_to_allocate) * $quantity_multiplier;
+				}
+				elseif ($should_update_inventory && !$cur_item_info->is_service && !empty($cur_item_info->track_inventory_lots) && $base_quantity_to_allocate < 0 && $cart->return_sale_id)
+				{
+					$returned_lots = $this->Inventory_lot->return_to_sale(
+						$cart->return_sale_id,
+						$item->item_id,
+						$item->variation_id ? $item->variation_id : NULL,
+						$sales_data['location_id'],
+						abs($base_quantity_to_allocate),
+						array('sale_id' => $sale_id, 'sale_line' => $line, 'employee_id' => $employee_id)
+					);
+
+					if ($returned_lots === FALSE)
+					{
+						$this->db->trans_rollback();
+						return -1;
+					}
+
+					$returned_cost = 0;
+					foreach ($returned_lots as $returned_lot)
+					{
+						$returned_cost += (float)$returned_lot['quantity'] * (float)$returned_lot['unit_cost'];
+					}
+					$cost_price = ($returned_cost / abs($base_quantity_to_allocate)) * $quantity_multiplier;
+				}
+
 				if ($cur_item_info->tax_included)
 				{
 					$this->load->helper('items');
@@ -2771,8 +2832,15 @@ class Sale extends MY_Model
 	function delete($sale_id, $all_data = false)
 	{
 		$this->load->model('Sale_types');
+		$this->load->model('Inventory_lot');
+		$this->db->trans_begin();
 		
 		$sale_info = $this->get_info($sale_id)->row_array();
+		if (!$this->Inventory_lot->restore_sale_allocations($sale_id))
+		{
+			$this->db->trans_rollback();
+			return FALSE;
+		}
 		$this->load->model('Customer');
 		$this->Customer->delete_series_by_sale_id($sale_id);
 		
@@ -2930,12 +2998,21 @@ class Sale extends MY_Model
 		}
 
 		$this->db->where('sale_id', $sale_id);
-		return $this->db->update('sales', array('deleted' => 1,'deleted_by'=>$employee_id, 'last_modified' => date('Y-m-d H:i:s')));
+		$result = $this->db->update('sales', array('deleted' => 1,'deleted_by'=>$employee_id, 'last_modified' => date('Y-m-d H:i:s')));
+		if (!$result || $this->db->trans_status() === FALSE)
+		{
+			$this->db->trans_rollback();
+			return FALSE;
+		}
+		$this->db->trans_commit();
+		return TRUE;
 	}
 	
 	function undelete($sale_id)
 	{
 		$this->load->model('Sale_types');
+		$this->load->model('Inventory_lot');
+		$this->db->trans_begin();
 		$sale_info = $this->get_info($sale_id)->row_array();
 		$suspended = $sale_info['suspended'];
 		$employee_id=$this->Employee->get_logged_in_employee_info()->person_id;
@@ -2943,13 +3020,36 @@ class Sale extends MY_Model
 		//Only update stock quantity + store accounts + giftcard balance if we are NOT an estimate ($suspended = 2)
 		if ($suspended < 2 || ($this->Sale_types->can_remove_quantity($suspended)))
 		{		
-			$this->db->select('unit_quantity,serialnumber,sales.location_id, item_id, quantity_purchased,item_variation_id,damaged_qty');
+			$this->db->select('unit_quantity,serialnumber,sales.location_id, item_id, quantity_purchased,item_variation_id,damaged_qty,line');
 			$this->db->from('sales_items');
 			$this->db->join('sales', 'sales.sale_id = sales_items.sale_id');
 			$this->db->where('sales_items.sale_id', $sale_id);
 		
 			foreach($this->db->get()->result_array() as $sale_item_row)
 			{
+				$cur_item_info = $this->Item->get_info($sale_item_row['item_id']);
+				$base_quantity = (float)$sale_item_row['quantity_purchased'] * ($sale_item_row['unit_quantity'] !== NULL ? (float)$sale_item_row['unit_quantity'] : 1);
+				if (!$cur_item_info->is_service && !empty($cur_item_info->track_inventory_lots) && abs($base_quantity) > 0.0000000001)
+				{
+					$context = array('sale_id' => $sale_id, 'sale_line' => $sale_item_row['line'], 'employee_id' => $employee_id);
+					if ($base_quantity > 0)
+					{
+						$policy = $cur_item_info->lot_allocation_policy === Inventory_lot::POLICY_FIFO ? Inventory_lot::POLICY_FIFO : Inventory_lot::POLICY_FEFO;
+						$lot_result = $this->Inventory_lot->allocate($sale_item_row['item_id'], $sale_item_row['item_variation_id'], $sale_item_row['location_id'], $base_quantity, $context, $policy);
+					}
+					else
+					{
+						$lot_result = !empty($sale_info['return_sale_id'])
+							? $this->Inventory_lot->return_to_sale($sale_info['return_sale_id'], $sale_item_row['item_id'], $sale_item_row['item_variation_id'], $sale_item_row['location_id'], abs($base_quantity), $context)
+							: FALSE;
+					}
+
+					if ($lot_result === FALSE)
+					{
+						$this->db->trans_rollback();
+						return FALSE;
+					}
+				}
 				
 				if ($sale_item_row['damaged_qty'] !=0)
 				{
@@ -2958,7 +3058,6 @@ class Sale extends MY_Model
 				}
 				
 				$sale_location_id = $sale_item_row['location_id'];
-				$cur_item_info = $this->Item->get_info($sale_item_row['item_id']);	
 				$cur_item_location_info = $this->Item_location->get_info($sale_item_row['item_id'], $sale_location_id);
 
 				if (!$cur_item_info->is_service)
@@ -3071,7 +3170,14 @@ class Sale extends MY_Model
 		}
 		
 		$this->db->where('sale_id', $sale_id);
-		return $this->db->update('sales', array('deleted' => 0, 'deleted_by' => NULL,'last_modified' => date('Y-m-d H:i:s')));
+		$result = $this->db->update('sales', array('deleted' => 0, 'deleted_by' => NULL,'last_modified' => date('Y-m-d H:i:s')));
+		if (!$result || $this->db->trans_status() === FALSE)
+		{
+			$this->db->trans_rollback();
+			return FALSE;
+		}
+		$this->db->trans_commit();
+		return TRUE;
 	}
 
 	function get_sale_items($sale_id)

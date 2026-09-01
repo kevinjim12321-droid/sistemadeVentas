@@ -31,3 +31,15 @@ WHERE person_id = 1 AND username = 'admin';
 - No utilizar permisos 777; limitar escritura a las carpetas necesarias.
 - Comprobar que el servidor devuelve 403 para database/database.sql y las carpetas internas.
 - Realizar revisión de seguridad y compatibilidad antes de producción.
+
+## Actualización experimental: control de lotes
+
+La rama `inventory-lots-test` incorpora lotes de inventario, fechas de fabricación y vencimiento,
+y asignación FIFO/FEFO. Antes de probarla en una instalación existente:
+
+1. Crear una copia de seguridad completa de los archivos y la base de datos.
+2. Actualizar los archivos conservando el `application/config/hosting.local.php` del servidor.
+3. Ejecutar `application/migrations/20260831235900_inventory_lots.sql` una sola vez.
+4. Probar entradas, ventas, devoluciones, anulaciones, transferencias y artículos con variantes.
+
+No activar el control por lotes en una instalación real hasta reconciliar las existencias actuales.

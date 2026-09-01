@@ -101,6 +101,89 @@
 							);?>
 						</div>
 					</div>
+
+					<div class="form-group is-service-toggle <?php if ($item_info->is_service){echo 'hidden';} ?>">
+						<?php echo form_label(lang('items_track_inventory_lots').':', 'track_inventory_lots',array('class'=>'col-sm-3 col-md-3 col-lg-2 control-label wide')); ?>
+						<div class="col-sm-9 col-md-9 col-lg-10">
+							<?php echo form_checkbox(array(
+								'name'=>'track_inventory_lots',
+								'id'=>'track_inventory_lots',
+								'value'=>1,
+								'checked'=>!empty($item_info->track_inventory_lots)
+							)); ?>
+							<label for="track_inventory_lots"><span></span></label>
+							<p class="help-block"><?php echo lang('items_track_inventory_lots_help'); ?></p>
+						</div>
+					</div>
+
+					<div id="lot_allocation_policy_container" class="form-group is-service-toggle <?php if ($item_info->is_service || empty($item_info->track_inventory_lots)){echo 'hidden';} ?>">
+						<?php echo form_label(lang('items_lot_allocation_policy').':', 'lot_allocation_policy',array('class'=>'col-sm-3 col-md-3 col-lg-2 control-label wide')); ?>
+						<div class="col-sm-9 col-md-9 col-lg-10">
+							<?php echo form_dropdown(
+								'lot_allocation_policy',
+								array('FEFO'=>lang('items_lot_policy_fefo'), 'FIFO'=>lang('items_lot_policy_fifo')),
+								!empty($item_info->lot_allocation_policy) ? $item_info->lot_allocation_policy : 'FEFO',
+								'class="form-control" id="lot_allocation_policy"'
+							); ?>
+						</div>
+					</div>
+
+					<script>
+					$(function() {
+						$('#track_inventory_lots').on('change', function() {
+							$('#lot_allocation_policy_container').toggleClass('hidden', !this.checked);
+						});
+					});
+					</script>
+
+					<?php if (!empty($item_info->track_inventory_lots)) { ?>
+					<div class="form-group">
+						<div class="col-sm-12">
+							<?php if (!empty($lot_stock_difference) && $lot_stock_difference > 0.0000000001) { ?>
+							<div class="alert alert-warning">
+								<?php echo sprintf(lang('items_lot_untracked_stock'), to_quantity($lot_stock_difference)); ?>
+								<button type="submit" name="reconcile_lot_stock" value="1" class="btn btn-warning btn-sm pull-right"><?php echo lang('items_lot_create_initial'); ?></button>
+								<div class="clearfix"></div>
+							</div>
+							<?php } ?>
+							<h4>
+								<?php echo lang('items_lot_stock'); ?>
+								<?php echo anchor('items/export_lots/'.$item_info->item_id, '<i class="ion-ios-download-outline"></i> '.lang('common_excel_export'), array('class'=>'btn btn-success btn-sm pull-right')); ?>
+							</h4>
+							<div class="table-responsive">
+								<table class="table table-striped table-hover">
+									<thead><tr>
+										<th><?php echo lang('items_lot_age'); ?></th>
+										<th><?php echo lang('items_lot_code'); ?></th>
+										<th><?php echo lang('items_variations'); ?></th>
+										<th><?php echo lang('items_manufactured_date'); ?></th>
+										<th><?php echo lang('items_expire_date'); ?></th>
+										<th><?php echo lang('items_lot_initial_quantity'); ?></th>
+										<th><?php echo lang('items_lot_remaining_quantity'); ?></th>
+										<th><?php echo lang('common_status'); ?></th>
+										<th><?php echo lang('common_actions'); ?></th>
+									</tr></thead>
+									<tbody>
+									<?php foreach ($inventory_lots as $lot_index => $lot) { ?>
+									<tr>
+										<td><?php echo (int)$lot_index + 1; ?></td>
+										<td><?php echo H($lot->lot_code); ?></td>
+										<td><?php echo H($lot->variation_name ? $lot->variation_name : lang('common_none')); ?></td>
+										<td><?php echo H($lot->manufactured_date ? $lot->manufactured_date : '-'); ?></td>
+										<td><?php echo H($lot->expire_date ? $lot->expire_date : '-'); ?></td>
+										<td><?php echo to_quantity($lot->quantity_initial); ?></td>
+										<td><strong><?php echo to_quantity($lot->quantity_remaining); ?></strong></td>
+										<td><?php echo H($lot->status); ?></td>
+										<td><?php echo anchor('items/lot_details/'.$lot->lot_id, lang('common_details'), array('class'=>'btn btn-primary btn-xs')); ?></td>
+									</tr>
+									<?php } ?>
+									<?php if (empty($inventory_lots)) { ?><tr><td colspan="9" class="text-center"><?php echo lang('items_no_lots'); ?></td></tr><?php } ?>
+									</tbody>
+								</table>
+							</div>
+						</div>
+					</div>
+					<?php } ?>
 					
 					
 					<?php if(!count($item_variations) > 0) { ?>
@@ -167,6 +250,52 @@
 								);?>
 							</div>
 						</div>
+
+						<?php if (!empty($item_info->track_inventory_lots)) { ?>
+						<div id="lot_adjustment_fields" class="well hidden-print">
+							<p class="help-block"><?php echo lang('items_lot_adjustment_help'); ?></p>
+							<div id="negative_lot_adjustment" class="form-group">
+								<?php echo form_label(lang('items_lot_select').':', 'adjustment_lot_id', array('class'=>'col-sm-3 col-md-3 col-lg-2 control-label')); ?>
+								<div class="col-sm-9 col-md-9 col-lg-10">
+									<select name="adjustment_lot_id" id="adjustment_lot_id" class="form-control">
+										<option value=""><?php echo lang('common_select'); ?></option>
+										<?php foreach ($inventory_lots as $lot) { if ((float)$lot->quantity_remaining > 0) { ?>
+										<option value="<?php echo (int)$lot->lot_id; ?>"><?php echo H($lot->lot_code).' — '.to_quantity($lot->quantity_remaining); ?></option>
+										<?php }} ?>
+									</select>
+								</div>
+							</div>
+							<div id="positive_lot_adjustment">
+								<div class="form-group">
+									<?php echo form_label(lang('items_lot_code').':', 'adjustment_lot_code', array('class'=>'col-sm-3 col-md-3 col-lg-2 control-label')); ?>
+									<div class="col-sm-9 col-md-9 col-lg-10"><input type="text" name="adjustment_lot_code" id="adjustment_lot_code" class="form-control" placeholder="AUTO"></div>
+								</div>
+								<div class="form-group">
+									<?php echo form_label(lang('common_cost_price').':', 'adjustment_unit_cost', array('class'=>'col-sm-3 col-md-3 col-lg-2 control-label')); ?>
+									<div class="col-sm-9 col-md-9 col-lg-10"><input type="text" name="adjustment_unit_cost" id="adjustment_unit_cost" class="form-control"></div>
+								</div>
+								<div class="form-group">
+									<?php echo form_label(lang('items_manufactured_date').':', 'adjustment_manufactured_date', array('class'=>'col-sm-3 col-md-3 col-lg-2 control-label')); ?>
+									<div class="col-sm-9 col-md-9 col-lg-10"><input type="date" name="adjustment_manufactured_date" id="adjustment_manufactured_date" class="form-control"></div>
+								</div>
+								<div class="form-group">
+									<?php echo form_label(lang('items_expire_date').':', 'adjustment_expire_date', array('class'=>'col-sm-3 col-md-3 col-lg-2 control-label')); ?>
+									<div class="col-sm-9 col-md-9 col-lg-10"><input type="date" name="adjustment_expire_date" id="adjustment_expire_date" class="form-control"></div>
+								</div>
+							</div>
+						</div>
+						<script>
+						$(function() {
+							function updateLotAdjustmentFields() {
+								var quantity = parseFloat($('#add_subtract').val()) || 0;
+								$('#negative_lot_adjustment').toggle(quantity < 0);
+								$('#positive_lot_adjustment').toggle(quantity > 0);
+							}
+							$('#add_subtract').on('input change', updateLotAdjustmentFields);
+							updateLotAdjustmentFields();
+						});
+						</script>
+						<?php } ?>
 						
 						
 						

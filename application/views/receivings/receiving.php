@@ -436,6 +436,14 @@ $has_cost_price_permission = $this->Employee->has_module_action_permission('item
 												<dt><?php echo lang('common_expire_date'); ?></dt>
 												<dd><a href="#" id="expire_date_<?php echo $line; ?>" class="expire_date" data-type="combodate" data-template="<?php echo get_js_date_format(); ?>" data-pk="1" data-name="expire_date" data-value="<?php echo date('Y-m-d', strtotime($item->expire_date)); ?>" data-url="<?php echo site_url('receivings/edit_item/' . $line); ?>" data-title="<?php echo H(lang('common_expire_date')); ?>"><?php echo H($item->expire_date); ?></a></dd>
 											<?php } ?>
+
+											<?php if (!empty($item->track_inventory_lots)) { ?>
+												<dt><?php echo lang('receivings_lot_code'); ?></dt>
+												<dd><a href="#" id="lot_code_<?php echo $line; ?>" class="xeditable" data-type="text" data-pk="1" data-name="lot_code" data-value="<?php echo H($item->lot_code); ?>" data-url="<?php echo site_url('receivings/edit_item/' . $line); ?>" data-title="<?php echo H(lang('receivings_lot_code')); ?>"><?php echo $item->lot_code ? H($item->lot_code) : lang('receivings_generated_automatically'); ?></a></dd>
+
+												<dt><?php echo lang('receivings_manufactured_date'); ?></dt>
+												<dd><a href="#" id="manufactured_date_<?php echo $line; ?>" class="expire_date" data-type="combodate" data-template="<?php echo get_js_date_format(); ?>" data-pk="1" data-name="manufactured_date" data-value="<?php echo $item->manufactured_date ? date('Y-m-d', strtotime($item->manufactured_date)) : ''; ?>" data-url="<?php echo site_url('receivings/edit_item/' . $line); ?>" data-title="<?php echo H(lang('receivings_manufactured_date')); ?>"><?php echo $item->manufactured_date ? H($item->manufactured_date) : lang('common_none'); ?></a></dd>
+											<?php } ?>
 											<dt class="visible-lg">
 												<?php
 												switch ($this->config->item('id_to_show_on_sale_interface')) {

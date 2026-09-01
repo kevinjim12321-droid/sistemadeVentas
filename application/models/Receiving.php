@@ -7,8 +7,9 @@ class Receiving extends MY_Model
 	
 	public function __construct()
 	{
-      parent::__construct();
-		$this->load->model('Inventory');	
+		parent::__construct();
+		$this->load->model('Inventory');
+		$this->load->model('Inventory_lot');
 	}
 	
 	function is_receiving_deleted($receiving_id)
@@ -241,6 +242,12 @@ class Receiving extends MY_Model
 		
 		if ($receiving_id)
 		{
+			if (!$this->Inventory_lot->delete_receiving_lots($receiving_id))
+			{
+				$this->db->trans_rollback();
+				return -1;
+			}
+
 			$previous_receiving_items = $this->get_receiving_items($receiving_id)->result_array();
 			//Delete previoulsy receving so we can overwrite data
 			$this->delete($receiving_id, true);
@@ -483,6 +490,12 @@ class Receiving extends MY_Model
 			{
 				$expire_date = date('Y-m-d', strtotime($item->expire_date));				
 			}
+
+			$manufactured_date = NULL;
+			if (!empty($item->manufactured_date))
+			{
+				$manufactured_date = date('Y-m-d', strtotime($item->manufactured_date));
+			}
 			
 			$quantity_received = 0;
 			
@@ -520,6 +533,8 @@ class Receiving extends MY_Model
 				'item_cost_price' => $cost_price,
 				'item_unit_price'=>$item->unit_price,
 				'expire_date' => $expire_date,
+				'lot_code' => !empty($item->lot_code) ? trim($item->lot_code) : NULL,
+				'manufactured_date' => $manufactured_date,
 				'subtotal' => $recv_item_subtotal,
 				'total' => $recv_item_total,
 				'tax' => $recv_item_tax,
@@ -665,13 +680,63 @@ class Receiving extends MY_Model
 					}
 				}
 			}
+
+			if ($suspended == 0 && $mode == 'receive' && !$cur_item_info->is_service && !empty($cur_item_info->track_inventory_lots) && $inventory_to_add > 0)
+			{
+				$quantity_multiplier = $item->quantity_unit_quantity !== NULL ? (float)$item->quantity_unit_quantity : 1;
+				$base_unit_cost = ((float)$item->unit_price * (1 - ((float)$item->discount / 100))) / $quantity_multiplier;
+				$receiving_location_id = $cart->location_id ? $cart->location_id : ($cart->transfer_from_location_id ? $cart->transfer_from_location_id : $this->Employee->get_logged_in_employee_current_location_id());
+
+				$lot_id = $this->Inventory_lot->create_lot(array(
+					'lot_code' => !empty($item->lot_code) ? $item->lot_code : NULL,
+					'item_id' => $item->item_id,
+					'item_variation_id' => $item->variation_id ? $item->variation_id : NULL,
+					'location_id' => $receiving_location_id,
+					'supplier_id' => $item->cart_line_supplier_id !== NULL ? $item->cart_line_supplier_id : ($supplier_id > 0 ? $supplier_id : NULL),
+					'receiving_id' => $receiving_id,
+					'receiving_line' => $line,
+					'manufactured_date' => $manufactured_date,
+					'expire_date' => $expire_date,
+					'received_at' => $receivings_data['receiving_time'],
+					'quantity_initial' => $inventory_to_add,
+					'unit_cost' => $base_unit_cost,
+					'employee_id' => $employee_id,
+				));
+
+				if (!$lot_id)
+				{
+					$this->db->trans_rollback();
+					return -1;
+				}
+			}
 			
 			if($suspended  == 0 && $mode=='transfer' && $location_id && !$cur_item_info->is_service)
-			{				
+			{
+				if (!empty($cur_item_info->track_inventory_lots))
+				{
+					$source_location_id = $cart->location_id ? $cart->location_id : ($cart->transfer_from_location_id ? $cart->transfer_from_location_id : $this->Employee->get_logged_in_employee_current_location_id());
+					$transfer_quantity = abs((float)$item->quantity * ($item->quantity_unit_quantity !== NULL ? (float)$item->quantity_unit_quantity : 1));
+					$allocation_policy = $cur_item_info->lot_allocation_policy === Inventory_lot::POLICY_FIFO ? Inventory_lot::POLICY_FIFO : Inventory_lot::POLICY_FEFO;
+					$lot_transfer = $this->Inventory_lot->transfer(
+						$item->item_id,
+						$item->variation_id ? $item->variation_id : NULL,
+						$source_location_id,
+						$location_id,
+						$transfer_quantity,
+						array('receiving_id' => $receiving_id, 'receiving_line' => $line, 'employee_id' => $employee_id),
+						$allocation_policy
+					);
+
+					if ($lot_transfer === FALSE)
+					{
+						$this->db->trans_rollback();
+						return -1;
+					}
+				}
 				
 				if ($item->variation_id)
 				{
-					$item_loc_var_to_save_qty = ($this->Item_variation_location->get_location_quantity($item->variation_id,$location_id) + ($item->quantity * -1))*($item->quantity_unit_quantity !== NULL ? $item->quantity_unit_quantity : 1);
+					$item_loc_var_to_save_qty = $this->Item_variation_location->get_location_quantity($item->variation_id,$location_id) + (($item->quantity * -1) * ($item->quantity_unit_quantity !== NULL ? $item->quantity_unit_quantity : 1));
 					$this->Item_variation_location->save_quantity($item_loc_var_to_save_qty,$item->variation_id,$location_id);
 
 					if (!isset($inv_data))
@@ -695,7 +760,7 @@ class Receiving extends MY_Model
 				}
 				else
 				{
-					$item_loc_qty_to_save = ($this->Item_location->get_location_quantity($item->item_id,$location_id) + ($item->quantity * -1))*($item->quantity_unit_quantity !== NULL ? $item->quantity_unit_quantity : 1);
+					$item_loc_qty_to_save = $this->Item_location->get_location_quantity($item->item_id,$location_id) + (($item->quantity * -1) * ($item->quantity_unit_quantity !== NULL ? $item->quantity_unit_quantity : 1));
 					$this->Item_location->save_quantity($item_loc_qty_to_save,$item->item_id,$location_id);
 				
 					if (!isset($inv_data))

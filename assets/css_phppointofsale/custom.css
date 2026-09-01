@@ -947,3 +947,54 @@ sup {
 #manufacturer_id {
   z-index: 0;
 }
+
+/* Mobile usability for sales, receivings, and inventory lot tables. */
+@media only screen and (max-width: 767px) {
+  .register .row {
+    margin-left: 0;
+    margin-right: 0;
+  }
+  .register .register-box,
+  .register .register-right,
+  .register .register-summary {
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+  .register .register-items-holder,
+  .table-responsive {
+    -webkit-overflow-scrolling: touch;
+    overflow-x: auto;
+  }
+  .register .register-items-holder table,
+  .table-responsive > table {
+    min-width: 680px;
+  }
+  .register input.form-control,
+  .register select.form-control,
+  .register textarea.form-control,
+  .form-horizontal input.form-control,
+  .form-horizontal select.form-control,
+  .form-horizontal textarea.form-control {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  .register .btn,
+  .manage_buttons .btn,
+  .form-horizontal .btn {
+    min-height: 44px;
+    white-space: normal;
+  }
+  .form-horizontal .control-label {
+    margin-bottom: 6px;
+    text-align: left;
+  }
+  .panel-body {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .manage_buttons .buttons-list,
+  .manage_buttons .pull-right-btn {
+    float: none !important;
+    width: 100%;
+  }
+}

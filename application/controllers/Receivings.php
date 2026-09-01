@@ -549,7 +549,7 @@ class Receivings extends Secure_area
 							$quantity = abs($quantity) * -1;
 						}
 						
-						if ($variable != 'expire_date')
+						if (!in_array($variable, array('expire_date', 'manufactured_date')))
 						{							
 							$item->$variable = $$variable;
 							
@@ -598,8 +598,8 @@ class Receivings extends Secure_area
 						}
 						else
 						{
-							$expire_date = $$variable;
-							$item->expire_date = date(get_date_format(),strtotime($expire_date));
+							$date_value = $$variable;
+							$item->$variable = $date_value ? date(get_date_format(), strtotime($date_value)) : NULL;
 						}
 					}
 					catch(Exception $e)

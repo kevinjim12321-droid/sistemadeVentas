@@ -488,20 +488,9 @@ if (!(isset($standalone) && $standalone)) {
 				</div>
 				<?php
 				$x_col = 6;
-				$xs_col = 4;
+				$xs_col = 2;
 				if ($discount_exists) {
 					$x_col = 4;
-					$xs_col = 3;
-
-					if ($this->config->item('wide_printer_receipt_format')) {
-						$x_col = 4;
-						$xs_col = 2;
-					}
-				} else {
-					if ($this->config->item('wide_printer_receipt_format')) {
-						$x_col = 6;
-						$xs_col = 2;
-					}
 				}
 				?>
 
@@ -511,7 +500,10 @@ if (!(isset($standalone) && $standalone)) {
 							<!-- invoice heading-->
 							<th class="invoice-table">
 								<div class="row">
-									<div class="<?php echo $this->config->item('wide_printer_receipt_format') ? 'col-md-' . $x_col . ' col-sm-' . $x_col . ' col-xs-' . $x_col : 'col-md-12 col-sm-12 col-xs-12' ?>">
+									<div class="col-md-<?php echo $xs_col; ?> col-sm-<?php echo $xs_col; ?> col-xs-<?php echo $xs_col; ?>">
+										<div class="invoice-head item-qty"><?php echo lang('common_quantity', '', array(), TRUE); ?></div>
+									</div>
+									<div class="col-md-<?php echo $x_col; ?> col-sm-<?php echo $x_col; ?> col-xs-<?php echo $x_col; ?>">
 										<div class="invoice-head item-name"><?php echo lang('common_item_name', '', array(), TRUE); ?></div>
 									</div>
 									<div class="col-md-<?php echo $xs_col; ?> col-sm-<?php echo $xs_col; ?> col-xs-<?php echo $xs_col; ?> gift_receipt_element">
@@ -519,10 +511,6 @@ if (!(isset($standalone) && $standalone)) {
 											<?php echo lang('common_price', '', array(), TRUE) . ($this->config->item('show_tax_per_item_on_receipt') ? '/' . lang('common_tax', '', array(), TRUE) : ''); ?>
 										</div>
 									</div>
-									<div class="col-md-<?php echo $xs_col; ?> col-sm-<?php echo $xs_col; ?> col-xs-<?php echo $xs_col; ?>">
-										<div class="invoice-head text-right item-qty"><?php echo lang('common_quantity', '', array(), TRUE); ?></div>
-									</div>
-
 									<?php if ($discount_exists) { ?>
 										<div class="col-md-<?php echo $xs_col; ?> col-sm-<?php echo $xs_col; ?> col-xs-<?php echo $xs_col; ?> gift_receipt_element">
 											<div class="invoice-head text-right item-discount"><?php echo lang('common_discount_percent', '', array(), TRUE); ?></div>
@@ -631,7 +619,18 @@ if (!(isset($standalone) && $standalone)) {
 								<!-- invoice items-->
 								<td class="invoice-table-content">
 									<div class="row receipt-row-item-holder">
-										<div class="<?php echo $this->config->item('wide_printer_receipt_format') ? 'col-md-' . $x_col . ' col-sm-' . $x_col . ' col-xs-' . $x_col : 'col-md-12 col-sm-12 col-xs-12' ?>">
+										<div class="col-md-<?php echo $xs_col; ?> col-sm-<?php echo $xs_col; ?> col-xs-<?php echo $xs_col; ?> ">
+											<div class="invoice-content item-qty">
+												<?php
+												if ($this->config->item('number_of_decimals_for_quantity_on_receipt') && floor($item->quantity) != $item->quantity) {
+													echo to_currency_no_money($item->quantity, $this->config->item('number_of_decimals_for_quantity_on_receipt'));
+												} else {
+													echo to_quantity($item->quantity);
+												}
+												?>
+											</div>
+										</div>
+										<div class="col-md-<?php echo $x_col; ?> col-sm-<?php echo $x_col; ?> col-xs-<?php echo $x_col; ?>">
 											<div class="invoice-content invoice-con">
 												<div class="invoice-content-heading">
 													<?php echo H($item->name); ?><?php if ($item_number_for_receipt) { ?> - <?php echo $item_number_for_receipt; ?><?php } ?><?php if ($item->size) { ?> (<?php echo H($item->size); ?>)<?php } ?>
@@ -793,18 +792,6 @@ if (!(isset($standalone) && $standalone)) {
 												<?php } ?>
 
 												<?php echo to_currency($unit_price + $item->get_modifier_unit_total(), 10) . ($this->config->item('show_tax_per_item_on_receipt') ? '/' . to_currency($item_tax_amount) : ''); ?>
-											</div>
-										</div>
-										<div class="col-md-<?php echo $xs_col; ?> col-sm-<?php echo $xs_col; ?> col-xs-<?php echo $xs_col; ?> ">
-											<div class="invoice-content item-qty text-right">
-												<?php
-												if ($this->config->item('number_of_decimals_for_quantity_on_receipt') && floor($item->quantity) != $item->quantity) {
-													echo to_currency_no_money($item->quantity, $this->config->item('number_of_decimals_for_quantity_on_receipt'));
-												} else {
-													echo to_quantity($item->quantity);
-												}
-												?>
-
 											</div>
 										</div>
 										<?php if ($discount_exists) { ?>

@@ -1265,11 +1265,14 @@ class Items extends Secure_area implements Idata_controller
 		$this->load->model('Item_variations');
 		$this->load->model('Item_variation_location');
 		$this->load->model('Category');
+		$this->load->model('Inventory_lot');
 		
 		$this->check_action_permission('edit_quantity');
 		
 		$data['item_info']=$this->Item->get_info($item_id);
-		$data['item_location_info']=$this->Item_location->get_info($item_id);		
+		$data['item_location_info']=$this->Item_location->get_info($item_id);
+		$current_location_id = $this->Employee->get_logged_in_employee_current_location_id();
+		$data['inventory_lots'] = $item_id != -1 ? $this->Inventory_lot->get_item_lots($item_id, $current_location_id) : array();
 		
 		if ($item_id != -1)
 		{
@@ -1278,6 +1281,12 @@ class Items extends Secure_area implements Idata_controller
 		}
 		
 		$data['item_variations'] = $this->Item_variations->get_variations($item_id);
+		$data['lot_stock_difference'] = 0;
+		if ($item_id != -1 && !empty($data['item_info']->track_inventory_lots) && empty($data['item_variations']))
+		{
+			$general_quantity = isset($data['item_location_info']->quantity) ? (float)$data['item_location_info']->quantity : 0;
+			$data['lot_stock_difference'] = $general_quantity - $this->Inventory_lot->get_lot_total($item_id, NULL, $current_location_id);
+		}
 		$data['item_variation_location_info'] = $this->Item_variation_location->get_variations_with_quantity($item_id);
 		$config['base_url'] = site_url('items/inventory/'.$item_id);
 		$config['per_page'] = $this->config->item('number_of_items_per_page') ? (int)$this->config->item('number_of_items_per_page') : 20; 
@@ -1295,6 +1304,50 @@ class Items extends Secure_area implements Idata_controller
 		$data['quick_edit'] = !empty($quick_edit);
 		
 		$this->load->view("items/inventory",$data);
+	}
+
+	function lot_details($lot_id)
+	{
+		$this->check_action_permission('edit_quantity');
+		$this->load->model('Inventory_lot');
+		$data['lot'] = $this->Inventory_lot->get_lot($lot_id);
+		$current_location_id = $this->Employee->get_logged_in_employee_current_location_id();
+		if (!$data['lot'] || (int)$data['lot']->location_id !== (int)$current_location_id)
+		{
+			show_404();
+		}
+		$data['movements'] = $this->Inventory_lot->get_lot_movements($lot_id);
+		$this->load->view('items/lot_details', $data);
+	}
+
+	function export_lots($item_id)
+	{
+		$this->check_action_permission('edit_quantity');
+		$this->load->model('Inventory_lot');
+		$this->load->helper('spreadsheet');
+		$location_id = $this->Employee->get_logged_in_employee_current_location_id();
+		$lots = $this->Inventory_lot->get_item_lots($item_id, $location_id);
+		$rows = array(array(
+			lang('items_lot_code'), lang('items_variations'), lang('items_manufactured_date'),
+			lang('items_expire_date'), lang('items_lot_initial_quantity'),
+			lang('items_lot_remaining_quantity'), lang('common_status'),
+			lang('common_cost_price'), lang('items_lot_received_at')
+		));
+		foreach ($lots as $lot)
+		{
+			$rows[] = array(
+				$lot->lot_code,
+				$lot->variation_name ? $lot->variation_name : lang('common_none'),
+				$lot->manufactured_date,
+				$lot->expire_date,
+				$lot->quantity_initial,
+				$lot->quantity_remaining,
+				$lot->status,
+				$lot->unit_cost,
+				$lot->received_at,
+			);
+		}
+		array_to_spreadsheet($rows, 'lotes_producto_'.$item_id.'.'.($this->config->item('spreadsheet_format') == 'XLSX' ? 'xlsx' : 'csv'), TRUE);
 	}
 	
 	function pricing($item_id=-1)
@@ -2847,6 +2900,7 @@ class Items extends Secure_area implements Idata_controller
 	function save_inventory($item_id=-1)
 	{
 		$this->load->model('Item_variations');
+		$this->load->model('Inventory_lot');
 		$error = false;
 		$this->check_action_permission('edit_quantity');		
 		
@@ -2860,16 +2914,41 @@ class Items extends Secure_area implements Idata_controller
 		$cur_item_info = $this->Item->get_info($item_id);
 
 		$location_id = $this->Employee->get_logged_in_employee_current_location_id();
+		$this->db->trans_begin();
 		
 		$item_variations = $this->input->post('item_variations');
 		
 		$item_data = array(
 		'expire_days'=>$this->input->post('expire_days') ?  $this->input->post('expire_days') : NULL,
+		'track_inventory_lots'=>$this->input->post('track_inventory_lots') ? 1 : 0,
+		'lot_allocation_policy'=>in_array($this->input->post('lot_allocation_policy'), array('FIFO', 'FEFO')) ? $this->input->post('lot_allocation_policy') : 'FEFO',
 		'reorder_level'=>$this->input->post('reorder_level')!='' ? $this->input->post('reorder_level') : NULL,
 		'replenish_level'=>$this->input->post('replenish_level')!='' ? $this->input->post('replenish_level') : NULL,
 		);
 		
 		$this->Item->save($item_data,$item_id);
+
+		if (!empty($item_data['track_inventory_lots']) && $this->input->post('reconcile_lot_stock'))
+		{
+			$this->load->model('Item_location');
+			$item_location = $this->Item_location->get_info($item_id, $location_id);
+			$difference = (float)$item_location->quantity - $this->Inventory_lot->get_lot_total($item_id, NULL, $location_id);
+			if ($difference <= 0.0000000001 || !$this->Inventory_lot->create_lot(array(
+				'lot_code' => 'INITIAL-'.date('Ymd-His'),
+				'item_id' => $item_id,
+				'location_id' => $location_id,
+				'quantity_initial' => $difference,
+				'unit_cost' => $cur_item_info->cost_price ? $cur_item_info->cost_price : 0,
+				'employee_id' => $employee_id,
+				'movement_type' => 'adjustment',
+				'reference_type' => 'inventory_reconciliation',
+				'reference_id' => $item_id,
+				'notes' => lang('items_lot_reconciliation_note'),
+			)))
+			{
+				$error = true;
+			}
+		}
 				
 		if ($this->input->post("damaged_qty") && empty($item_variations))
 		{
@@ -2966,6 +3045,41 @@ class Items extends Secure_area implements Idata_controller
 		{
 			$this->load->model('Item_location');
 			$cur_item_location_info = $this->Item_location->get_info($item_id);
+			$adjustment_quantity = (float)$this->input->post('add_subtract');
+			$lot_adjustment_handled = false;
+			if (!empty($item_data['track_inventory_lots']) && abs($adjustment_quantity) > 0.0000000001)
+			{
+				if ($adjustment_quantity > 0)
+				{
+					$lot_adjustment_handled = (bool)$this->Inventory_lot->create_lot(array(
+						'lot_code' => $this->input->post('adjustment_lot_code'),
+						'item_id' => $item_id,
+						'location_id' => $location_id,
+						'manufactured_date' => $this->input->post('adjustment_manufactured_date'),
+						'expire_date' => $this->input->post('adjustment_expire_date'),
+						'quantity_initial' => $adjustment_quantity,
+						'unit_cost' => $this->input->post('adjustment_unit_cost') !== '' ? $this->input->post('adjustment_unit_cost') : $cur_item_info->cost_price,
+						'employee_id' => $employee_id,
+						'movement_type' => 'adjustment',
+						'reference_type' => 'manual_inventory',
+						'reference_id' => $item_id,
+						'notes' => $this->input->post('trans_comment'),
+					));
+				}
+				else
+				{
+					$lot_adjustment_handled = $this->Inventory_lot->adjust_lot($this->input->post('adjustment_lot_id'), $adjustment_quantity, array(
+						'employee_id' => $employee_id,
+						'reference_type' => 'manual_inventory',
+						'reference_id' => $item_id,
+						'notes' => $this->input->post('trans_comment'),
+					));
+				}
+				if (!$lot_adjustment_handled)
+				{
+					$error = true;
+				}
+			}
 				
 			$inv_data = array
 			(
@@ -3007,8 +3121,10 @@ class Items extends Secure_area implements Idata_controller
 		
 		if($error)
 		{
+			$this->db->trans_rollback();
 			echo json_encode(array('success'=>false,'message'=>lang('common_error_adding_updating').' '.H($cur_item_info->name),'item_id'=>-1));
-		} else {			
+		} else {
+			$this->db->trans_commit();
 			echo json_encode(array('success'=>true,'message'=>lang('common_items_successful_updating').' '.H($cur_item_info->name),'item_id'=>$item_id, 'redirect' => $redirect, 'progression' => $progression, 'quick_edit' => $quick_edit,'reload' => true));
 		}
 	}

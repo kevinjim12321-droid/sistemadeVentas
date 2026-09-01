@@ -156,6 +156,10 @@ class PHPPOSCartRecv extends PHPPOSCart
 			$item_props['serialnumber'] = $row->serialnumber;
 			$item_props['quantity_received'] = $row->quantity_received;
 			$item_props['expire_date'] = $row->expire_date;
+			$item_props['lot_code'] = isset($row->lot_code) ? $row->lot_code : NULL;
+			$item_props['manufactured_date'] = isset($row->manufactured_date) ? $row->manufactured_date : NULL;
+			$item_props['track_inventory_lots'] = $cur_item_info->track_inventory_lots;
+			$item_props['lot_allocation_policy'] = $cur_item_info->lot_allocation_policy;
 			$item_props['system_item'] = $cur_item_info->system_item;
 			$item_props['size'] = $cur_item_info->size;
 			$CI->load->model('Tag');

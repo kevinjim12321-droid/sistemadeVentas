@@ -1,6 +1,9 @@
 <?php
 $lang['receivings_register']='Recibo de productos';
 $lang['receivings_mode']='Modo de Recibo';
+$lang['receivings_lot_code'] = 'Código de lote';
+$lang['receivings_manufactured_date'] = 'Fecha de fabricación';
+$lang['receivings_generated_automatically'] = 'Se generará automáticamente';
 
 $lang['receivings_return']='Regresar';
 $lang['receivings_total']='Total';

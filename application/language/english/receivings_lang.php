@@ -1,6 +1,9 @@
 <?php
 $lang['receivings_register']='Items Receiving';
 $lang['receivings_mode']='Receiving Mode';
+$lang['receivings_lot_code'] = 'Lot code';
+$lang['receivings_manufactured_date'] = 'Manufactured date';
+$lang['receivings_generated_automatically'] = 'Generated automatically';
 
 $lang['receivings_return']='Return';
 $lang['receivings_transfer']='Transfer';
