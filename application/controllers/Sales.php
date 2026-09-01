@@ -3069,6 +3069,49 @@ class Sales extends Secure_area
 	{
 		$this->_reload();
 	}
+
+	function apply_lot_price_to_item($line)
+	{
+		$source_item = $this->cart->get_item($line);
+		if (!$source_item || !($source_item instanceof PHPPOSCartItemSale) || empty($source_item->selected_lot_id))
+		{
+			$this->_reload(array('error' => 'No se pudo identificar el lote y precio seleccionados.'));
+			return;
+		}
+
+		$can_edit_price = $source_item->allow_price_override_regardless_of_permissions ||
+			$this->Employee->has_module_action_permission('sales', 'edit_sale_price', $this->Employee->get_logged_in_employee_info()->person_id);
+		if (!$can_edit_price)
+		{
+			$this->_reload(array('error' => 'No tiene permiso para cambiar el precio de venta.'));
+			return;
+		}
+
+		$source_variation_id = $source_item->variation_id ? (int)$source_item->variation_id : NULL;
+		$source_quantity_unit_id = $source_item->quantity_unit_id ? (int)$source_item->quantity_unit_id : NULL;
+		$updated = 0;
+		foreach ($this->cart->get_items() as $cart_item)
+		{
+			if (!($cart_item instanceof PHPPOSCartItemSale) || $cart_item->quantity <= 0 || empty($cart_item->selected_lot_id) || (int)$cart_item->item_id !== (int)$source_item->item_id)
+			{
+				continue;
+			}
+
+			$variation_id = $cart_item->variation_id ? (int)$cart_item->variation_id : NULL;
+			$quantity_unit_id = $cart_item->quantity_unit_id ? (int)$cart_item->quantity_unit_id : NULL;
+			if ($variation_id !== $source_variation_id || $quantity_unit_id !== $source_quantity_unit_id)
+			{
+				continue;
+			}
+
+			$cart_item->unit_price = (float)$source_item->unit_price;
+			$cart_item->has_edit_price = TRUE;
+			$updated++;
+		}
+
+		$this->cart->save();
+		$this->_reload($updated ? array('success' => 'Se aplicó el mismo precio a todos los lotes de este artículo.') : array('error' => 'No se encontraron líneas para actualizar.'));
+	}
 	
 	function paginate($offset = 0)
 	{

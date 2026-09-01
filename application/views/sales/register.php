@@ -349,12 +349,21 @@ if ($this->Location->get_info_for_key('enable_credit_card_processing') && $this-
 															}
 													?>
 														<dt>Lote / precio de venta</dt>
-														<dd><a href="#" id="selected_lot_<?php echo $line; ?>" data-name="selected_lot_id" data-type="select" data-pk="1" data-url="<?php echo site_url('sales/edit_item/' . $line); ?>" data-title="Seleccione el lote"><?php echo H($item->selected_lot_code).' — '.to_currency($item->unit_price).' — Disponible: '.to_quantity($item->selected_lot_quantity_available); ?></a></dd>
+														<dd>
+															<a href="#" id="selected_lot_<?php echo $line; ?>" data-name="selected_lot_id" data-type="select" data-pk="1" data-url="<?php echo site_url('sales/edit_item/' . $line); ?>" data-title="Seleccione el lote"><?php echo H($item->selected_lot_code).' — '.to_currency($item->unit_price).' — Disponible: '.to_quantity($item->selected_lot_quantity_available); ?></a>
+															<?php if ($item->allow_price_override_regardless_of_permissions || $this->Employee->has_module_action_permission('sales', 'edit_sale_price', $this->Employee->get_logged_in_employee_info()->person_id)) { ?>
+																&nbsp;|&nbsp;<a href="#" class="apply-lot-price-to-item" data-url="<?php echo site_url('sales/apply_lot_price_to_item/' . $line); ?>">Usar este precio en todos</a>
+															<?php } ?>
+														</dd>
 														<script>
 															$('#selected_lot_<?php echo $line; ?>').editable({
 																value: <?php echo json_encode((int)$item->selected_lot_id); ?>,
 																source: <?php echo json_encode($lot_source); ?>,
 																success: function(response) { $('#register_container').html(response); }
+															});
+															$('.apply-lot-price-to-item').off('click.lotPrice').on('click.lotPrice', function(e) {
+																e.preventDefault();
+																$.post($(this).data('url'), function(response) { $('#register_container').html(response); });
 															});
 														</script>
 													<?php
