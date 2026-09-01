@@ -598,8 +598,20 @@ class Receivings extends Secure_area
 						}
 						else
 						{
-							$date_value = $$variable;
-							$item->$variable = $date_value ? date(get_date_format(), strtotime($date_value)) : NULL;
+							$date_value = trim((string)$$variable);
+							if ($date_value === '')
+							{
+								$item->$variable = NULL;
+							}
+							else
+							{
+								$date = DateTime::createFromFormat('!Y-m-d', $date_value);
+								if (!$date || $date->format('Y-m-d') !== $date_value)
+								{
+									throw new Exception('Invalid date');
+								}
+								$item->$variable = $date_value;
+							}
 						}
 					}
 					catch(Exception $e)

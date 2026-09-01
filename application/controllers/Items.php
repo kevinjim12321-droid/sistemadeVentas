@@ -1331,7 +1331,7 @@ class Items extends Secure_area implements Idata_controller
 			lang('items_lot_code'), lang('items_variations'), lang('items_manufactured_date'),
 			lang('items_expire_date'), lang('items_lot_initial_quantity'),
 			lang('items_lot_remaining_quantity'), lang('common_status'),
-			lang('common_cost_price'), lang('items_lot_received_at')
+			lang('common_cost_price'), lang('common_unit_price'), lang('items_lot_received_at')
 		));
 		foreach ($lots as $lot)
 		{
@@ -1344,6 +1344,7 @@ class Items extends Secure_area implements Idata_controller
 				$lot->quantity_remaining,
 				$lot->status,
 				$lot->unit_cost,
+				$lot->unit_price,
 				$lot->received_at,
 			);
 		}
@@ -2939,6 +2940,7 @@ class Items extends Secure_area implements Idata_controller
 				'location_id' => $location_id,
 				'quantity_initial' => $difference,
 				'unit_cost' => $cur_item_info->cost_price ? $cur_item_info->cost_price : 0,
+				'unit_price' => $cur_item_info->unit_price,
 				'employee_id' => $employee_id,
 				'movement_type' => 'adjustment',
 				'reference_type' => 'inventory_reconciliation',
@@ -3059,6 +3061,7 @@ class Items extends Secure_area implements Idata_controller
 						'expire_date' => $this->input->post('adjustment_expire_date'),
 						'quantity_initial' => $adjustment_quantity,
 						'unit_cost' => $this->input->post('adjustment_unit_cost') !== '' ? $this->input->post('adjustment_unit_cost') : $cur_item_info->cost_price,
+						'unit_price' => $this->input->post('adjustment_unit_price') !== '' ? $this->input->post('adjustment_unit_price') : $cur_item_info->unit_price,
 						'employee_id' => $employee_id,
 						'movement_type' => 'adjustment',
 						'reference_type' => 'manual_inventory',

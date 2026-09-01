@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS `phppos_inventory_lots` (
   `quantity_initial` decimal(23,10) NOT NULL DEFAULT '0.0000000000',
   `quantity_remaining` decimal(23,10) NOT NULL DEFAULT '0.0000000000',
   `unit_cost` decimal(23,10) NOT NULL DEFAULT '0.0000000000',
+  `unit_price` decimal(23,10) DEFAULT NULL,
   `status` varchar(20) COLLATE utf8_unicode_ci NOT NULL DEFAULT 'active',
   `notes` text COLLATE utf8_unicode_ci,
   `created_by` int(10) DEFAULT NULL,

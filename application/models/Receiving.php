@@ -700,6 +700,7 @@ class Receiving extends MY_Model
 					'received_at' => $receivings_data['receiving_time'],
 					'quantity_initial' => $inventory_to_add,
 					'unit_cost' => $base_unit_cost,
+					'unit_price' => (float)$item->selling_price / $quantity_multiplier,
 					'employee_id' => $employee_id,
 				));
 

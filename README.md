@@ -40,6 +40,7 @@ y asignación FIFO/FEFO. Antes de probarla en una instalación existente:
 1. Crear una copia de seguridad completa de los archivos y la base de datos.
 2. Actualizar los archivos conservando el `application/config/hosting.local.php` del servidor.
 3. Ejecutar `application/migrations/20260831235900_inventory_lots.sql` una sola vez.
-4. Probar entradas, ventas, devoluciones, anulaciones, transferencias y artículos con variantes.
+4. En instalaciones que ya tenían lotes, ejecutar también `application/migrations/20260901083000_inventory_lot_prices.sql` para agregar el precio de venta por lote.
+5. Probar entradas, ventas, devoluciones, anulaciones, transferencias y artículos con variantes.
 
 No activar el control por lotes en una instalación real hasta reconciliar las existencias actuales.

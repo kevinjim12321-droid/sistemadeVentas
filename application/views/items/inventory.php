@@ -160,6 +160,8 @@
 										<th><?php echo lang('items_expire_date'); ?></th>
 										<th><?php echo lang('items_lot_initial_quantity'); ?></th>
 										<th><?php echo lang('items_lot_remaining_quantity'); ?></th>
+										<th><?php echo lang('common_cost_price'); ?></th>
+										<th><?php echo lang('common_unit_price'); ?></th>
 										<th><?php echo lang('common_status'); ?></th>
 										<th><?php echo lang('common_actions'); ?></th>
 									</tr></thead>
@@ -173,11 +175,13 @@
 										<td><?php echo H($lot->expire_date ? $lot->expire_date : '-'); ?></td>
 										<td><?php echo to_quantity($lot->quantity_initial); ?></td>
 										<td><strong><?php echo to_quantity($lot->quantity_remaining); ?></strong></td>
+										<td><?php echo to_currency($lot->unit_cost); ?></td>
+										<td><?php echo $lot->unit_price !== NULL ? to_currency($lot->unit_price) : '-'; ?></td>
 										<td><?php echo H($lot->status); ?></td>
 										<td><?php echo anchor('items/lot_details/'.$lot->lot_id, lang('common_details'), array('class'=>'btn btn-primary btn-xs')); ?></td>
 									</tr>
 									<?php } ?>
-									<?php if (empty($inventory_lots)) { ?><tr><td colspan="9" class="text-center"><?php echo lang('items_no_lots'); ?></td></tr><?php } ?>
+									<?php if (empty($inventory_lots)) { ?><tr><td colspan="11" class="text-center"><?php echo lang('items_no_lots'); ?></td></tr><?php } ?>
 									</tbody>
 								</table>
 							</div>
@@ -273,6 +277,10 @@
 								<div class="form-group">
 									<?php echo form_label(lang('common_cost_price').':', 'adjustment_unit_cost', array('class'=>'col-sm-3 col-md-3 col-lg-2 control-label')); ?>
 									<div class="col-sm-9 col-md-9 col-lg-10"><input type="text" name="adjustment_unit_cost" id="adjustment_unit_cost" class="form-control"></div>
+								</div>
+								<div class="form-group">
+									<?php echo form_label(lang('common_unit_price').':', 'adjustment_unit_price', array('class'=>'col-sm-3 col-md-3 col-lg-2 control-label')); ?>
+									<div class="col-sm-9 col-md-9 col-lg-10"><input type="text" name="adjustment_unit_price" id="adjustment_unit_price" class="form-control"></div>
 								</div>
 								<div class="form-group">
 									<?php echo form_label(lang('items_manufactured_date').':', 'adjustment_manufactured_date', array('class'=>'col-sm-3 col-md-3 col-lg-2 control-label')); ?>

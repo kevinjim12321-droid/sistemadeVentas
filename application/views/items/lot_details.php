@@ -12,6 +12,8 @@
 			<div class="col-sm-4"><strong><?php echo lang('items_lot_initial_quantity'); ?>:</strong> <?php echo to_quantity($lot->quantity_initial); ?></div>
 			<div class="col-sm-4"><strong><?php echo lang('items_lot_remaining_quantity'); ?>:</strong> <?php echo to_quantity($lot->quantity_remaining); ?></div>
 			<div class="col-sm-4"><strong><?php echo lang('common_status'); ?>:</strong> <?php echo H($lot->status); ?></div>
+			<div class="col-sm-4"><strong><?php echo lang('common_cost_price'); ?>:</strong> <?php echo to_currency($lot->unit_cost); ?></div>
+			<div class="col-sm-4"><strong><?php echo lang('common_unit_price'); ?>:</strong> <?php echo $lot->unit_price !== NULL ? to_currency($lot->unit_price) : '-'; ?></div>
 		</div>
 
 		<div class="table-responsive">
