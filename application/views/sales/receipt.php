@@ -547,6 +547,9 @@ if (!(isset($standalone) && $standalone)) {
 						$cart_items = $cart->get_list_sort_by_receipt_sort_order();
 					}
 
+					$this->load->helper('sale');
+					$cart_items = consolidate_inventory_lot_receipt_items($cart_items);
+
 					foreach (array_reverse($cart_items, true) as $line1 => $item) {
 						$line = $item->line_index;
 

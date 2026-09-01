@@ -675,6 +675,9 @@ for($k=1;$k<=NUMBER_OF_PEOPLE_CUSTOM_FIELDS;$k++)
 											$cart->add_item($discount_item,false);
 											$cart_items = $cart->get_items();
 										}
+
+										$this->load->helper('sale');
+										$cart_items = consolidate_inventory_lot_receipt_items($cart_items);
 										
 											foreach(array_reverse($cart_items, true) as $line=>$item)
 											{

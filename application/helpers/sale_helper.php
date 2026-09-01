@@ -1,5 +1,55 @@
 <?php
 
+/**
+ * Combine receipt-only rows created by inventory lot allocation.
+ * Database sale lines and lot movements remain untouched; only rows with the
+ * same public-facing product, variation, price and discount are combined.
+ */
+function consolidate_inventory_lot_receipt_items($cart_items)
+{
+	$consolidated = array();
+	$group_indexes = array();
+
+	foreach ($cart_items as $line => $item)
+	{
+		if (!($item instanceof PHPPOSCartItemSale) || $item->quantity <= 0)
+		{
+			$consolidated[$line] = $item;
+			continue;
+		}
+
+		$variation_id = $item->variation_id ? (int)$item->variation_id : 0;
+		$quantity_unit_id = $item->quantity_unit_id ? (int)$item->quantity_unit_id : 0;
+		$group_key = implode('|', array(
+			(int)$item->item_id,
+			$variation_id,
+			$quantity_unit_id,
+			number_format((float)$item->unit_price, 10, '.', ''),
+			number_format((float)$item->discount, 10, '.', ''),
+			(string)$item->description,
+			(string)$item->serialnumber,
+			md5(serialize($item->modifier_items)),
+			md5(serialize(array($item->override_tax_names, $item->override_tax_percents, $item->override_tax_cumulatives, $item->override_tax_class)))
+		));
+
+		if (!isset($group_indexes[$group_key]))
+		{
+			$receipt_item = clone $item;
+			$receipt_item->selected_lot_id = NULL;
+			$receipt_item->selected_lot_code = NULL;
+			$receipt_item->selected_lot_quantity_available = NULL;
+			$consolidated[$line] = $receipt_item;
+			$group_indexes[$group_key] = $line;
+		}
+		else
+		{
+			$consolidated[$group_indexes[$group_key]]->quantity += (float)$item->quantity;
+		}
+	}
+
+	return $consolidated;
+}
+
 function is_sale_integrated_giftcard_processing($cart)
 {
 	$CI =& get_instance();
