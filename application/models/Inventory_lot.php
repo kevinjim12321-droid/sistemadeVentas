@@ -139,6 +139,63 @@ class Inventory_lot extends MY_Model
 		return $row && $row->total !== NULL ? (float)$row->total : 0;
 	}
 
+	/**
+	 * Preview the lots that would be consumed without changing inventory.
+	 * The ordering intentionally matches allocate() so cart pricing and the
+	 * final inventory movement use the same FIFO/FEFO decision.
+	 */
+	public function preview_allocation($item_id, $variation_id, $location_id, $quantity, $policy = self::POLICY_FEFO, $skip_quantity = 0)
+	{
+		$quantity = (float)$quantity;
+		$skip_quantity = max(0, (float)$skip_quantity);
+		if ($quantity <= 0)
+		{
+			return array();
+		}
+
+		$this->db->from('inventory_lots');
+		$this->db->where('item_id', (int)$item_id);
+		$this->where_variation($variation_id);
+		$this->db->where('location_id', (int)$location_id);
+		$this->db->where('status', self::STATUS_ACTIVE);
+		$this->db->where('quantity_remaining >', 0);
+		$this->db->group_start();
+		$this->db->where('expire_date IS NULL', NULL, FALSE);
+		$this->db->or_where('expire_date >=', date('Y-m-d'));
+		$this->db->group_end();
+		$this->apply_policy_order($policy);
+		$lots = $this->db->get()->result();
+
+		$remaining = $quantity;
+		$preview = array();
+		foreach ($lots as $lot)
+		{
+			$available = (float)$lot->quantity_remaining;
+			if ($skip_quantity >= $available)
+			{
+				$skip_quantity -= $available;
+				continue;
+			}
+
+			$available -= $skip_quantity;
+			$skip_quantity = 0;
+			$taken = min($available, $remaining);
+			$preview[] = array(
+				'lot_id' => (int)$lot->lot_id,
+				'lot_code' => $lot->lot_code,
+				'quantity' => $taken,
+				'unit_price' => $lot->unit_price,
+			);
+			$remaining -= $taken;
+			if ($remaining <= 0.0000000001)
+			{
+				break;
+			}
+		}
+
+		return $preview;
+	}
+
 	public function adjust_lot($lot_id, $quantity_delta, $context = array())
 	{
 		$quantity_delta = (float)$quantity_delta;

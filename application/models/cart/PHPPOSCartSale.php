@@ -556,6 +556,74 @@ class PHPPOSCartSale extends PHPPOSCart
 	{
 		return $this->sale_id;
 	}
+
+	/**
+	 * Apply the FIFO/FEFO lot selling price to positive sale lines.
+	 * When one line spans lots with different prices, use their weighted
+	 * average so the cart total equals the sum of the consumed lot prices.
+	 */
+	public function refresh_inventory_lot_prices()
+	{
+		if ($this->get_mode() !== 'sale' || $this->return_sale_id || $this->is_editing_previous)
+		{
+			return FALSE;
+		}
+
+		$CI =& get_instance();
+		$CI->load->model('Inventory_lot');
+		$location_id = $this->location_id ? $this->location_id : $CI->Employee->get_logged_in_employee_current_location_id();
+		$consumed_by_item = array();
+		$changed = FALSE;
+
+		foreach ($this->get_items() as $item)
+		{
+			if (!($item instanceof PHPPOSCartItemSale) || $item->quantity <= 0 || $item->has_edit_price)
+			{
+				continue;
+			}
+
+			$item_info = $CI->Item->get_info($item->item_id);
+			if ($item_info->is_service || empty($item_info->track_inventory_lots))
+			{
+				continue;
+			}
+
+			$multiplier = $item->quantity_unit_quantity !== NULL ? (float)$item->quantity_unit_quantity : 1;
+			$base_quantity = (float)$item->quantity * $multiplier;
+			$key = (int)$item->item_id.'|'.($item->variation_id ? (int)$item->variation_id : 0);
+			$skip_quantity = isset($consumed_by_item[$key]) ? $consumed_by_item[$key] : 0;
+			$policy = $item_info->lot_allocation_policy === Inventory_lot::POLICY_FIFO ? Inventory_lot::POLICY_FIFO : Inventory_lot::POLICY_FEFO;
+			$lots = $CI->Inventory_lot->preview_allocation($item->item_id, $item->variation_id, $location_id, $base_quantity, $policy, $skip_quantity);
+
+			$priced_quantity = 0;
+			$price_total = 0;
+			foreach ($lots as $lot)
+			{
+				if ($lot['unit_price'] !== NULL)
+				{
+					$priced_quantity += (float)$lot['quantity'];
+					$price_total += (float)$lot['quantity'] * (float)$lot['unit_price'];
+				}
+			}
+
+			if ($priced_quantity > 0.0000000001)
+			{
+				// Any quantity beyond lot stock retains the normal item price.
+				$unpriced_quantity = max(0, $base_quantity - $priced_quantity);
+				$normal_base_price = $multiplier != 0 ? ((float)$item->regular_price / $multiplier) : (float)$item->regular_price;
+				$new_price = (($price_total + ($unpriced_quantity * $normal_base_price)) / $base_quantity) * $multiplier;
+				if (abs((float)$item->unit_price - $new_price) > 0.0000000001)
+				{
+					$item->unit_price = $new_price;
+					$changed = TRUE;
+				}
+			}
+
+			$consumed_by_item[$key] = $skip_quantity + $base_quantity;
+		}
+
+		return $changed;
+	}
 		
 	public function add_item_kit(PHPPOSCartItemKit $item_kit_to_add,$options = array())
 	{

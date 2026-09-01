@@ -2946,6 +2946,13 @@ class Sales extends Secure_area
 	
 	function _reload($data=array(), $is_ajax = true)
 	{	
+		// Keep the displayed sale price synchronized with the lots that FIFO/FEFO
+		// will actually consume when the sale is completed.
+		if ($this->cart->refresh_inventory_lot_prices())
+		{
+			$this->cart->save();
+		}
+
 		//This is used for upgrade installs that never had this set (sales in progress)
 		if ($this->cart->limit === NULL)
 		{
