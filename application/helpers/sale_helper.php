@@ -65,7 +65,9 @@ function consolidate_cash_receipt_payments($payments)
 {
 	$consolidated = array();
 	$cash_index = NULL;
-	$cash_name = lang('common_cash', '', array(), TRUE);
+	// Payment types are stored in the current language only, even when receipts
+	// are configured to display a second language.
+	$cash_name = lang('common_cash');
 
 	foreach ($payments as $payment_id => $payment)
 	{
