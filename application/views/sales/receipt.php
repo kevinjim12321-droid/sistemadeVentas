@@ -2307,8 +2307,21 @@ foreach (array_reverse($cart_items, true) as $line => $item) {
 <?php echo lang('common_items_sold', '', array(), TRUE); ?>: <?php echo to_quantity($number_of_items_sold); ?>
 
 <?php
-$payments = consolidate_cash_receipt_payments($payments);
-foreach ($payments as $payment_id => $payment) { ?>
+$compact_receipt_payments = array();
+foreach ($payments as $payment_id => $payment)
+{
+	$payment_key = trim((string)$payment->payment_type);
+	if (!isset($compact_receipt_payments[$payment_key]))
+	{
+		$compact_receipt_payments[$payment_key] = clone $payment;
+	}
+	else
+	{
+		$compact_receipt_payments[$payment_key]->payment_amount += (float)$payment->payment_amount;
+	}
+}
+
+foreach ($compact_receipt_payments as $payment_id => $payment) { ?>
 
 <?php echo (isset($show_payment_times) && $show_payment_times) ?  date(get_date_format() . ' ' . get_time_format(), strtotime($payment->payment_date)) : lang('common_payment', '', array(), TRUE); ?>  <?php if (($is_integrated_credit_sale || sale_has_partial_credit_card_payment($cart) || sale_has_partial_ebt_payment($cart)) && ($payment->payment_type == lang('common_credit', '', array(), TRUE) ||  $payment->payment_type == lang('sales_partial_credit', '', array(), TRUE) || $payment->payment_type == lang('common_ebt', '', array(), TRUE) || $payment->payment_type == lang('common_partial_ebt', '', array(), TRUE) ||  $payment->payment_type == lang('common_ebt_cash', '', array(), TRUE) ||  $payment->payment_type == lang('common_partial_ebt_cash', '', array(), TRUE))) {
 																																																			echo $payment->card_issuer . ': ' . $payment->truncated_card; ?> <?php } else { ?><?php $splitpayment = explode(':', $payment->payment_type);
