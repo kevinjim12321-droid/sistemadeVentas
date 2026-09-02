@@ -1005,6 +1005,7 @@ for($k=1;$k<=NUMBER_OF_PEOPLE_CUSTOM_FIELDS;$k++)
 									  	<tr><td colspan="<?php echo $total_columns; ?>">&nbsp;</td></tr>
 
 									    <?php 
+											$payments = consolidate_cash_receipt_payments($payments);
 											foreach($payments as $payment_id=>$payment) 
 											{ 	
 												if ($payment->payment_type == lang('common_store_account'))

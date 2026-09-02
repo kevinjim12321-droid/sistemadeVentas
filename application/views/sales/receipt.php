@@ -1106,6 +1106,7 @@ if (!(isset($standalone) && $standalone)) {
 					</div>
 
 					<?php
+					$payments = consolidate_cash_receipt_payments($payments);
 					foreach ($payments as $payment_id => $payment) {
 						$pcounter = 0;
 

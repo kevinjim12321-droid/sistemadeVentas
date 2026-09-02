@@ -57,6 +57,39 @@ function consolidate_inventory_lot_receipt_items($cart_items)
 	return $consolidated;
 }
 
+/**
+ * Show repeated cash adjustments from completed-sale edits as one net payment.
+ * The original payment rows remain unchanged in the database and reports.
+ */
+function consolidate_cash_receipt_payments($payments)
+{
+	$consolidated = array();
+	$cash_index = NULL;
+	$cash_name = lang('common_cash', '', array(), TRUE);
+
+	foreach ($payments as $payment_id => $payment)
+	{
+		if ($payment->payment_type !== $cash_name)
+		{
+			$consolidated[$payment_id] = $payment;
+			continue;
+		}
+
+		if ($cash_index === NULL)
+		{
+			$receipt_payment = clone $payment;
+			$consolidated[$payment_id] = $receipt_payment;
+			$cash_index = $payment_id;
+		}
+		else
+		{
+			$consolidated[$cash_index]->payment_amount += (float)$payment->payment_amount;
+		}
+	}
+
+	return $consolidated;
+}
+
 function is_sale_integrated_giftcard_processing($cart)
 {
 	$CI =& get_instance();
