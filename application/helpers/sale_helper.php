@@ -65,13 +65,26 @@ function consolidate_cash_receipt_payments($payments)
 {
 	$consolidated = array();
 	$cash_index = NULL;
-	// Payment types are stored in the current language only, even when receipts
-	// are configured to display a second language.
-	$cash_name = lang('common_cash');
+	$cash_names = array_map('trim', explode('/', lang('common_cash', '', array(), TRUE)));
+	$cash_names[] = trim(lang('common_cash'));
+	$cash_names = array_unique(array_filter($cash_names, 'strlen'));
 
 	foreach ($payments as $payment_id => $payment)
 	{
-		if ($payment->payment_type !== $cash_name)
+		$payment_name_parts = explode(':', (string)$payment->payment_type, 2);
+		$payment_name = trim($payment_name_parts[0]);
+		$is_cash = FALSE;
+
+		foreach ($cash_names as $cash_name)
+		{
+			if (strcasecmp($payment_name, $cash_name) === 0)
+			{
+				$is_cash = TRUE;
+				break;
+			}
+		}
+
+		if (!$is_cash)
 		{
 			$consolidated[$payment_id] = $payment;
 			continue;
