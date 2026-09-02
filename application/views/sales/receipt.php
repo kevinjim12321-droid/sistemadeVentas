@@ -1106,8 +1106,22 @@ if (!(isset($standalone) && $standalone)) {
 					</div>
 
 					<?php
-					$payments = consolidate_cash_receipt_payments($payments);
-					foreach ($payments as $payment_id => $payment) {
+					$receipt_payments = array();
+					foreach ($payments as $payment_id => $payment)
+					{
+						$payment_key_parts = explode(':', (string)$payment->payment_type, 2);
+						$payment_key = trim($payment_key_parts[0]);
+						if (!isset($receipt_payments[$payment_key]))
+						{
+							$receipt_payments[$payment_key] = clone $payment;
+						}
+						else
+						{
+							$receipt_payments[$payment_key]->payment_amount += (float)$payment->payment_amount;
+						}
+					}
+
+					foreach ($receipt_payments as $payment_id => $payment) {
 						$pcounter = 0;
 
 						$tip_amount_on_payment = 0;
