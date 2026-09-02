@@ -12,6 +12,13 @@ function consolidate_inventory_lot_receipt_items($cart_items)
 
 	foreach ($cart_items as $line => $item)
 	{
+		// A completed-sale edit can leave a zero-quantity database line behind.
+		// It is useful for internal history but must never be printed to customers.
+		if ($item instanceof PHPPOSCartItemSale && abs((float)$item->quantity) <= 0.0000000001)
+		{
+			continue;
+		}
+
 		if (!($item instanceof PHPPOSCartItemSale) || $item->quantity <= 0)
 		{
 			$consolidated[$line] = $item;
