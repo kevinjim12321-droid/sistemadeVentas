@@ -269,6 +269,26 @@ class PHPPOSCartSale extends PHPPOSCart
 			}			
 			$item_props['quantity_unit_id'] = $row->items_quantity_units_id;
 			$item_props['quantity_unit_quantity'] = $row->unit_quantity;
+
+			// A completed sale keeps its lot allocation in inventory_lot_movements.
+			// Restore it only while changing that sale so normal register/receipt
+			// requests remain completely untouched.
+			if ($is_editing_previous)
+			{
+				$lot_sql = 'SELECT l.lot_id, l.lot_code, l.quantity_remaining, '
+					.'ABS(m.quantity_delta) AS sold_quantity '
+					.'FROM '.$CI->db->dbprefix('inventory_lot_movements').' m '
+					.'INNER JOIN '.$CI->db->dbprefix('inventory_lots').' l ON l.lot_id = m.lot_id '
+					.'WHERE m.sale_id = ? AND m.sale_line = ? AND m.movement_type = ? '
+					.'ORDER BY m.movement_id ASC LIMIT 1';
+				$line_lot = $CI->db->query($lot_sql, array((int)$sale_id, (int)$row->line, 'sale'))->row();
+				if ($line_lot)
+				{
+					$item_props['selected_lot_id'] = (int)$line_lot->lot_id;
+					$item_props['selected_lot_code'] = $line_lot->lot_code;
+					$item_props['selected_lot_quantity_available'] = (float)$line_lot->quantity_remaining + (float)$line_lot->sold_quantity;
+				}
+			}
 						
 			//Sale or layaway or we aren't editing a previous sale then we want to show cost price in db
 			if($sale_info['suspended'] <=1 || !$is_editing_previous || $CI->config->item('dont_recalculate_cost_price_when_unsuspending_estimates'))

@@ -341,10 +341,20 @@ if ($this->Location->get_info_for_key('enable_credit_card_processing') && $this-
 															$lot_policy = $lot_item_info->lot_allocation_policy === Inventory_lot::POLICY_FIFO ? Inventory_lot::POLICY_FIFO : Inventory_lot::POLICY_FEFO;
 															$available_lots = $this->Inventory_lot->get_available_lots($item->item_id, $item->variation_id, $lot_location_id, $lot_policy);
 															$lot_source = array();
+															$selected_lot_in_source = FALSE;
 															foreach ($available_lots as $available_lot) {
+																if ((int)$available_lot->lot_id === (int)$item->selected_lot_id) {
+																	$selected_lot_in_source = TRUE;
+																}
 																$lot_source[] = array(
 																	'value' => (int)$available_lot->lot_id,
 																	'text' => $available_lot->lot_code.' — '.to_currency($available_lot->unit_price).' — Disponible: '.to_quantity($available_lot->quantity_remaining)
+																);
+															}
+															if (!$selected_lot_in_source && !empty($item->selected_lot_id)) {
+																$lot_source[] = array(
+																	'value' => (int)$item->selected_lot_id,
+																	'text' => $item->selected_lot_code.' — '.to_currency($item->unit_price).' — Disponible al editar: '.to_quantity($item->selected_lot_quantity_available)
 																);
 															}
 													?>
