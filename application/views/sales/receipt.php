@@ -2310,7 +2310,8 @@ foreach (array_reverse($cart_items, true) as $line => $item) {
 $compact_receipt_payments = array();
 foreach ($payments as $payment_id => $payment)
 {
-	$payment_key = trim((string)$payment->payment_type);
+	$payment_key_parts = explode(':', (string)$payment->payment_type, 2);
+	$payment_key = trim($payment_key_parts[0]);
 	if (!isset($compact_receipt_payments[$payment_key]))
 	{
 		$compact_receipt_payments[$payment_key] = clone $payment;
