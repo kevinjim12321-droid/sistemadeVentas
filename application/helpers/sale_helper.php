@@ -67,7 +67,22 @@ function consolidate_cash_receipt_payments($payments)
 	$cash_index = NULL;
 	$cash_names = array_map('trim', explode('/', lang('common_cash', '', array(), TRUE)));
 	$cash_names[] = trim(lang('common_cash'));
+	$cash_names[] = 'Efectivo';
+	$cash_names[] = 'Cash';
 	$cash_names = array_unique(array_filter($cash_names, 'strlen'));
+	$payment_types = array();
+	$has_negative_adjustment = FALSE;
+
+	foreach ($payments as $payment)
+	{
+		$payment_name_parts = explode(':', (string)$payment->payment_type, 2);
+		$payment_types[] = strtolower(trim($payment_name_parts[0]));
+		$has_negative_adjustment = $has_negative_adjustment || (float)$payment->payment_amount < 0;
+	}
+
+	// Completed-sale edits create positive and negative payment history rows.
+	// When every row uses the same method, the customer receipt should show its net value.
+	$consolidate_adjusted_single_type = $has_negative_adjustment && count(array_unique($payment_types)) === 1;
 
 	foreach ($payments as $payment_id => $payment)
 	{
@@ -84,7 +99,7 @@ function consolidate_cash_receipt_payments($payments)
 			}
 		}
 
-		if (!$is_cash)
+		if (!$is_cash && !$consolidate_adjusted_single_type)
 		{
 			$consolidated[$payment_id] = $payment;
 			continue;
