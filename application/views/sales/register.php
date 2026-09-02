@@ -339,7 +339,7 @@ if ($this->Location->get_info_for_key('enable_credit_card_processing') && $this-
 														if (!empty($lot_item_info->track_inventory_lots) && $item->quantity > 0) {
 															$lot_location_id = $cart->location_id ? $cart->location_id : $this->Employee->get_logged_in_employee_current_location_id();
 															$lot_policy = $lot_item_info->lot_allocation_policy === Inventory_lot::POLICY_FIFO ? Inventory_lot::POLICY_FIFO : Inventory_lot::POLICY_FEFO;
-															$available_lots = $this->Inventory_lot->get_available_lots($item->item_id, $item->variation_id, $lot_location_id, $lot_policy);
+													$available_lots = $this->Inventory_lot->get_available_lots($item->item_id, $item->variation_id, $lot_location_id, $lot_policy, FALSE, TRUE);
 															$lot_source = array();
 															$selected_lot_in_source = FALSE;
 															foreach ($available_lots as $available_lot) {

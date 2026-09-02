@@ -162,6 +162,7 @@
 										<th><?php echo lang('items_lot_remaining_quantity'); ?></th>
 										<th><?php echo lang('common_cost_price'); ?></th>
 										<th><?php echo lang('common_unit_price'); ?></th>
+										<th><?php echo lang('items_lot_condition'); ?></th>
 										<th><?php echo lang('common_status'); ?></th>
 										<th><?php echo lang('common_actions'); ?></th>
 									</tr></thead>
@@ -177,11 +178,12 @@
 										<td><strong><?php echo to_quantity($lot->quantity_remaining); ?></strong></td>
 										<td><?php echo to_currency($lot->unit_cost); ?></td>
 										<td><?php echo $lot->unit_price !== NULL ? to_currency($lot->unit_price) : '-'; ?></td>
+										<td><?php echo strpos($lot->lot_code, 'QUEBRADO-') === 0 ? lang('items_damage_sellable_broken') : lang('items_lot_condition_good'); ?></td>
 										<td><?php echo H($lot->status); ?></td>
 										<td><?php echo anchor('items/lot_details/'.$lot->lot_id, lang('common_details'), array('class'=>'btn btn-primary btn-xs')); ?></td>
 									</tr>
 									<?php } ?>
-									<?php if (empty($inventory_lots)) { ?><tr><td colspan="11" class="text-center"><?php echo lang('items_no_lots'); ?></td></tr><?php } ?>
+									<?php if (empty($inventory_lots)) { ?><tr><td colspan="12" class="text-center"><?php echo lang('items_no_lots'); ?></td></tr><?php } ?>
 									</tbody>
 								</table>
 							</div>
@@ -416,6 +418,61 @@
 				
 
 			</div>
+
+			<?php if (!empty($item_info->track_inventory_lots) && $this->Employee->has_module_action_permission('items','edit_quantity', $this->Employee->get_logged_in_employee_info()->person_id)) { ?>
+				<?php if ($this->session->flashdata('lot_damage_message')) { ?>
+				<div class="alert <?php echo $this->session->flashdata('lot_damage_success') ? 'alert-success' : 'alert-danger'; ?>">
+					<?php echo H($this->session->flashdata('lot_damage_message')); ?>
+				</div>
+				<?php } ?>
+				<div class="panel panel-piluku hidden-print">
+					<div class="panel-heading"><h3 class="panel-title"><?php echo lang('items_damage_control'); ?></h3></div>
+					<div class="panel-body">
+						<?php echo form_open('items/classify_lot_damage/'.$item_info->item_id, array('class'=>'form-horizontal', 'id'=>'lot_damage_form')); ?>
+						<div class="form-group">
+							<?php echo form_label(lang('items_lot_select').':', 'damage_lot_id', array('class'=>'col-sm-3 control-label')); ?>
+							<div class="col-sm-9"><select name="damage_lot_id" id="damage_lot_id" class="form-control" required>
+								<option value=""><?php echo lang('common_select'); ?></option>
+								<?php foreach ($inventory_lots as $lot) { if ((float)$lot->quantity_remaining > 0 && strpos($lot->lot_code, 'QUEBRADO-') !== 0) { ?>
+								<option value="<?php echo (int)$lot->lot_id; ?>"><?php echo H($lot->lot_code).' — '.lang('items_lot_available').': '.to_quantity($lot->quantity_remaining); ?></option>
+								<?php }} ?>
+							</select></div>
+						</div>
+						<div class="form-group">
+							<?php echo form_label(lang('common_quantity').':', 'damage_quantity', array('class'=>'col-sm-3 control-label')); ?>
+							<div class="col-sm-9"><input type="number" min="0.0000000001" step="any" name="damage_quantity" id="damage_quantity" class="form-control" required></div>
+						</div>
+						<div class="form-group">
+							<?php echo form_label(lang('items_damage_classification').':', 'damage_classification', array('class'=>'col-sm-3 control-label')); ?>
+							<div class="col-sm-9"><select name="damage_classification" id="damage_classification" class="form-control" required>
+								<option value="sellable_broken"><?php echo lang('items_damage_sellable_broken'); ?></option>
+								<option value="loss"><?php echo lang('items_damage_total_loss'); ?></option>
+							</select></div>
+						</div>
+						<div class="form-group" id="damage_price_group">
+							<?php echo form_label(lang('items_damage_sale_price').':', 'damage_unit_price', array('class'=>'col-sm-3 control-label')); ?>
+							<div class="col-sm-9"><input type="number" min="0" step="any" name="damage_unit_price" id="damage_unit_price" class="form-control"></div>
+						</div>
+						<div class="form-group">
+							<?php echo form_label(lang('common_comments').':', 'damage_notes', array('class'=>'col-sm-3 control-label')); ?>
+							<div class="col-sm-9"><textarea name="damage_notes" id="damage_notes" class="form-control" rows="2"></textarea></div>
+						</div>
+						<div class="text-right"><button type="submit" class="btn btn-warning"><?php echo lang('items_damage_register'); ?></button></div>
+						<?php echo form_close(); ?>
+					</div>
+				</div>
+				<script>
+				$(function() {
+					function toggleDamagePrice() {
+						var sellable = $('#damage_classification').val() === 'sellable_broken';
+						$('#damage_price_group').toggle(sellable);
+						$('#damage_unit_price').prop('required', sellable);
+					}
+					$('#damage_classification').on('change', toggleDamagePrice);
+					toggleDamagePrice();
+				});
+				</script>
+			<?php } ?>
 			
 			
 			

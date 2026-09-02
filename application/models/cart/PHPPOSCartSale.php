@@ -607,7 +607,9 @@ class PHPPOSCartSale extends PHPPOSCart
 			}
 
 			$policy = $item_info->lot_allocation_policy === Inventory_lot::POLICY_FIFO ? Inventory_lot::POLICY_FIFO : Inventory_lot::POLICY_FEFO;
-			$lots = $CI->Inventory_lot->get_available_lots($item->item_id, $item->variation_id, $location_id, $policy);
+			$selected_lot_info = $item->selected_lot_id ? $CI->Inventory_lot->get_lot($item->selected_lot_id) : NULL;
+			$include_broken = $selected_lot_info && strpos($selected_lot_info->lot_code, 'QUEBRADO-') === 0;
+			$lots = $CI->Inventory_lot->get_available_lots($item->item_id, $item->variation_id, $location_id, $policy, FALSE, $include_broken);
 			if (!$lots)
 			{
 				continue;

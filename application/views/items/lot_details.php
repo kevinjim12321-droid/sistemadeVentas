@@ -14,6 +14,7 @@
 			<div class="col-sm-4"><strong><?php echo lang('common_status'); ?>:</strong> <?php echo H($lot->status); ?></div>
 			<div class="col-sm-4"><strong><?php echo lang('common_cost_price'); ?>:</strong> <?php echo to_currency($lot->unit_cost); ?></div>
 			<div class="col-sm-4"><strong><?php echo lang('common_unit_price'); ?>:</strong> <?php echo $lot->unit_price !== NULL ? to_currency($lot->unit_price) : '-'; ?></div>
+			<div class="col-sm-4"><strong><?php echo lang('items_lot_condition'); ?>:</strong> <?php echo strpos($lot->lot_code, 'QUEBRADO-') === 0 ? lang('items_damage_sellable_broken') : lang('items_lot_condition_good'); ?></div>
 		</div>
 
 		<div class="table-responsive">
@@ -31,7 +32,14 @@
 				<?php foreach ($movements as $movement) { ?>
 				<tr>
 					<td><?php echo H($movement->occurred_at); ?></td>
-					<td><?php echo H($movement->movement_type); ?></td>
+					<?php
+					$movement_lang_key = 'items_lot_movement_'.$movement->movement_type;
+					$movement_label = lang($movement_lang_key);
+					if (!$movement_label || $movement_label === $movement_lang_key) {
+						$movement_label = $movement->movement_type;
+					}
+					?>
+					<td><?php echo H($movement_label); ?></td>
 					<td><?php echo to_quantity($movement->quantity_delta); ?></td>
 					<td><?php echo to_quantity($movement->balance_after); ?></td>
 					<td><?php echo H(trim($movement->first_name.' '.$movement->last_name)); ?></td>

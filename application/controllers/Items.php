@@ -1320,6 +1320,37 @@ class Items extends Secure_area implements Idata_controller
 		$this->load->view('items/lot_details', $data);
 	}
 
+	function classify_lot_damage($item_id)
+	{
+		$this->check_action_permission('edit_quantity');
+		$this->load->model('Inventory_lot');
+
+		$location_id = $this->Employee->get_logged_in_employee_current_location_id();
+		$employee_id = $this->Employee->get_logged_in_employee_info()->person_id;
+		$lot_id = (int)$this->input->post('damage_lot_id');
+		$quantity = (float)$this->input->post('damage_quantity');
+		$classification = $this->input->post('damage_classification');
+		$unit_price = (float)$this->input->post('damage_unit_price');
+		$notes = trim((string)$this->input->post('damage_notes'));
+		$lot = $this->Inventory_lot->get_lot($lot_id);
+
+		$valid = $lot && (int)$lot->item_id === (int)$item_id && (int)$lot->location_id === (int)$location_id
+			&& strpos($lot->lot_code, 'QUEBRADO-') !== 0
+			&& $quantity > 0 && in_array($classification, array('sellable_broken', 'loss'), TRUE)
+			&& ($classification !== 'sellable_broken' || ($this->input->post('damage_unit_price') !== '' && $unit_price >= 0));
+
+		$result = $valid ? $this->Inventory_lot->classify_damage($lot_id, $quantity, $classification, $unit_price, array(
+			'employee_id' => $employee_id,
+			'notes' => $notes,
+		)) : FALSE;
+
+		$this->session->set_flashdata('lot_damage_message', $result
+			? ($classification === 'sellable_broken' ? lang('items_damage_sellable_success') : lang('items_damage_loss_success'))
+			: lang('items_damage_error'));
+		$this->session->set_flashdata('lot_damage_success', (bool)$result);
+		redirect('items/inventory/'.$item_id.'?redirect=items');
+	}
+
 	function export_lots($item_id)
 	{
 		$this->check_action_permission('edit_quantity');
@@ -1331,7 +1362,7 @@ class Items extends Secure_area implements Idata_controller
 			lang('items_lot_code'), lang('items_variations'), lang('items_manufactured_date'),
 			lang('items_expire_date'), lang('items_lot_initial_quantity'),
 			lang('items_lot_remaining_quantity'), lang('common_status'),
-			lang('common_cost_price'), lang('common_unit_price'), lang('items_lot_received_at')
+			lang('common_cost_price'), lang('common_unit_price'), lang('items_lot_condition'), lang('items_lot_received_at')
 		));
 		foreach ($lots as $lot)
 		{
@@ -1345,6 +1376,7 @@ class Items extends Secure_area implements Idata_controller
 				$lot->status,
 				$lot->unit_cost,
 				$lot->unit_price,
+				strpos($lot->lot_code, 'QUEBRADO-') === 0 ? lang('items_damage_sellable_broken') : lang('items_lot_condition_good'),
 				$lot->received_at,
 			);
 		}

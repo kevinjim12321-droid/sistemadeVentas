@@ -1592,7 +1592,17 @@ class Sales extends Secure_area
 
 		$location_id = $this->cart->location_id ? $this->cart->location_id : $this->Employee->get_logged_in_employee_current_location_id();
 		$policy = $item_info->lot_allocation_policy === Inventory_lot::POLICY_FIFO ? Inventory_lot::POLICY_FIFO : Inventory_lot::POLICY_FEFO;
-		$lots = $this->Inventory_lot->get_available_lots($item->item_id, $item->variation_id, $location_id, $policy);
+		$preferred_lot = $preferred_lot_id ? $this->Inventory_lot->get_lot($preferred_lot_id) : NULL;
+		$include_broken = $preferred_lot && strpos($preferred_lot->lot_code, 'QUEBRADO-') === 0;
+		$lots = $this->Inventory_lot->get_available_lots($item->item_id, $item->variation_id, $location_id, $policy, FALSE, $include_broken);
+		if ($include_broken)
+		{
+			// A broken-product sale must use only the explicitly selected broken lot.
+			$lots = array_values(array_filter($lots, function($lot) use ($preferred_lot_id)
+			{
+				return (int)$lot->lot_id === (int)$preferred_lot_id;
+			}));
+		}
 		if (!$lots)
 		{
 			return 'No hay lotes disponibles para este artículo.';

@@ -72,7 +72,7 @@ class Inventory_lot extends MY_Model
 		return $lot_id;
 	}
 
-	public function get_available_lots($item_id, $variation_id, $location_id, $policy = self::POLICY_FEFO, $include_expired = FALSE)
+	public function get_available_lots($item_id, $variation_id, $location_id, $policy = self::POLICY_FEFO, $include_expired = FALSE, $include_broken = FALSE)
 	{
 		$this->db->from('inventory_lots');
 		$this->db->where('item_id', (int)$item_id);
@@ -80,6 +80,10 @@ class Inventory_lot extends MY_Model
 		$this->db->where('location_id', (int)$location_id);
 		$this->db->where('status', self::STATUS_ACTIVE);
 		$this->db->where('quantity_remaining >', 0);
+		if (!$include_broken)
+		{
+			$this->db->not_like('lot_code', 'QUEBRADO-', 'after');
+		}
 
 		if (!$include_expired)
 		{
@@ -159,6 +163,7 @@ class Inventory_lot extends MY_Model
 		$this->db->where('location_id', (int)$location_id);
 		$this->db->where('status', self::STATUS_ACTIVE);
 		$this->db->where('quantity_remaining >', 0);
+		$this->db->not_like('lot_code', 'QUEBRADO-', 'after');
 		$this->db->group_start();
 		$this->db->where('expire_date IS NULL', NULL, FALSE);
 		$this->db->or_where('expire_date >=', date('Y-m-d'));
@@ -235,6 +240,125 @@ class Inventory_lot extends MY_Model
 		}
 		$this->db->trans_commit();
 		return TRUE;
+	}
+
+	public function classify_damage($lot_id, $quantity, $classification, $unit_price, $context = array())
+	{
+		$quantity = (float)$quantity;
+		if ($quantity <= 0 || !in_array($classification, array('sellable_broken', 'loss'), TRUE))
+		{
+			return FALSE;
+		}
+
+		$this->db->trans_begin();
+		$sql = "SELECT * FROM {$this->db->dbprefix('inventory_lots')} WHERE lot_id = ? FOR UPDATE";
+		$source = $this->db->query($sql, array((int)$lot_id))->row();
+		if (!$source || $source->status !== self::STATUS_ACTIVE || (float)$source->quantity_remaining + 0.0000000001 < $quantity)
+		{
+			$this->db->trans_rollback();
+			return FALSE;
+		}
+
+		$now = date('Y-m-d H:i:s');
+		$source_balance = (float)$source->quantity_remaining - $quantity;
+		$this->db->where('lot_id', (int)$source->lot_id);
+		$this->db->update('inventory_lots', array(
+			'quantity_remaining' => $this->decimal(max(0, $source_balance)),
+			'status' => $source_balance <= 0.0000000001 ? self::STATUS_DEPLETED : self::STATUS_ACTIVE,
+			'updated_at' => $now,
+		));
+
+		$movement_context = $context;
+		$movement_context['reference_type'] = 'lot_damage';
+		$movement_context['reference_id'] = (string)(int)$source->lot_id;
+		$this->record_movement($source->lot_id, $classification === 'loss' ? 'damage_loss' : 'damage_transfer_out', -$quantity, max(0, $source_balance), $movement_context);
+		$this->db->insert('damaged_items_log', array(
+			'damaged_date' => $now,
+			'damaged_qty' => $this->decimal($quantity),
+			'damaged_reason' => $classification === 'loss' ? 'Estallado / pérdida total' : 'Quebrado vendible',
+			'item_id' => (int)$source->item_id,
+			'item_variation_id' => $source->item_variation_id ? (int)$source->item_variation_id : NULL,
+			'location_id' => (int)$source->location_id,
+			'sale_id' => NULL,
+			'damaged_reason_comment' => 'Lote: '.$source->lot_code.(empty($context['notes']) ? '' : ' | '.$context['notes']),
+		));
+
+		if ($classification === 'loss')
+		{
+			if ($source->item_variation_id)
+			{
+				$this->db->set('quantity', 'quantity-'.$this->decimal($quantity), FALSE);
+				$this->db->where('item_variation_id', (int)$source->item_variation_id);
+				$this->db->where('location_id', (int)$source->location_id);
+				$this->db->where('quantity >=', $quantity);
+				$this->db->update('location_item_variations');
+			}
+			else
+			{
+				$this->db->set('quantity', 'quantity-'.$this->decimal($quantity), FALSE);
+				$this->db->where('item_id', (int)$source->item_id);
+				$this->db->where('location_id', (int)$source->location_id);
+				$this->db->where('quantity >=', $quantity);
+				$this->db->update('location_items');
+			}
+
+			if ($this->db->affected_rows() !== 1)
+			{
+				$this->db->trans_rollback();
+				return FALSE;
+			}
+
+			$this->db->insert('inventory', array(
+				'trans_date' => $now,
+				'trans_items' => (int)$source->item_id,
+				'item_variation_id' => $source->item_variation_id ? (int)$source->item_variation_id : NULL,
+				'trans_user' => !empty($context['employee_id']) ? (int)$context['employee_id'] : NULL,
+				'trans_comment' => 'MERMA ESTALLADO | Lote: '.$source->lot_code.(empty($context['notes']) ? '' : ' | '.$context['notes']),
+				'trans_inventory' => $this->decimal(-$quantity),
+				'location_id' => (int)$source->location_id,
+				'trans_current_quantity' => $this->decimal($this->get_lot_total($source->item_id, $source->item_variation_id, $source->location_id)),
+			));
+		}
+
+		$destination_lot_id = NULL;
+		if ($classification === 'sellable_broken')
+		{
+			$lot_code = substr('QUEBRADO-'.$source->lot_code.'-'.date('YmdHis'), 0, 100);
+			$this->db->insert('inventory_lots', array(
+				'lot_code' => $lot_code,
+				'item_id' => (int)$source->item_id,
+				'item_variation_id' => $source->item_variation_id ? (int)$source->item_variation_id : NULL,
+				'location_id' => (int)$source->location_id,
+				'supplier_id' => $source->supplier_id ? (int)$source->supplier_id : NULL,
+				'receiving_id' => NULL,
+				'receiving_line' => NULL,
+				'manufactured_date' => $source->manufactured_date,
+				'expire_date' => $source->expire_date,
+				'received_at' => $now,
+				'quantity_initial' => $this->decimal($quantity),
+				'quantity_remaining' => $this->decimal($quantity),
+				'unit_cost' => $source->unit_cost,
+				'unit_price' => $this->decimal($unit_price),
+				'status' => self::STATUS_ACTIVE,
+				'notes' => 'QUEBRADO VENDIBLE | Origen: '.$source->lot_code.(empty($context['notes']) ? '' : ' | '.$context['notes']),
+				'created_by' => !empty($context['employee_id']) ? (int)$context['employee_id'] : NULL,
+				'created_at' => $now,
+				'updated_at' => $now,
+			));
+			$destination_lot_id = $this->db->insert_id();
+			$destination_context = $movement_context;
+			$destination_context['reference_id'] = (string)(int)$source->lot_id;
+			$this->record_movement($destination_lot_id, 'damage_transfer_in', $quantity, $quantity, $destination_context);
+		}
+
+		if ($this->db->trans_status() === FALSE)
+		{
+			$this->db->trans_rollback();
+			return FALSE;
+		}
+
+		$this->db->trans_commit();
+		return array('source_lot' => $source, 'destination_lot_id' => $destination_lot_id);
 	}
 
 	public function allocate($item_id, $variation_id, $location_id, $quantity, $context = array(), $policy = self::POLICY_FEFO)
@@ -586,6 +710,7 @@ class Inventory_lot extends MY_Model
 			AND location_id = {$location_id}
 			AND status = 'active'
 			AND quantity_remaining > 0
+			AND lot_code NOT LIKE 'QUEBRADO-%'
 			AND (expire_date IS NULL OR expire_date >= CURDATE())
 			ORDER BY {$order_sql}
 			FOR UPDATE";
