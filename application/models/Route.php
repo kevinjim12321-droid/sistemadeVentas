@@ -116,35 +116,30 @@ class Route extends MY_Model
 
 	public function get_available_warehouse_lots($location_id)
 	{
-		$this->db->select('inventory_lots.*, items.name AS item_name, item_variations.name AS variation_name');
-		$this->db->from('inventory_lots');
-		$this->db->join('items', 'items.item_id = inventory_lots.item_id');
-		$this->db->join('item_variations', 'item_variations.id = inventory_lots.item_variation_id', 'left');
-		$this->db->where('inventory_lots.location_id', (int)$location_id);
-		$this->db->where('inventory_lots.status', 'active');
-		$this->db->where('inventory_lots.quantity_remaining >', 0);
-		$this->db->not_like('inventory_lots.lot_code', 'QUEBRADO-', 'after');
-		$this->db->group_start();
-		$this->db->where('inventory_lots.expire_date IS NULL', NULL, FALSE);
-		$this->db->or_where('inventory_lots.expire_date >=', date('Y-m-d'));
-		$this->db->group_end();
-		$this->db->order_by('items.name', 'ASC');
-		$this->db->order_by('(inventory_lots.expire_date IS NULL)', 'ASC', FALSE);
-		$this->db->order_by('inventory_lots.expire_date', 'ASC');
-		$this->db->order_by('inventory_lots.received_at', 'ASC');
-		return $this->db->get()->result();
+		$sql = 'SELECT lots.*, items.name AS item_name, variations.name AS variation_name
+			FROM '.$this->db->dbprefix('inventory_lots').' lots
+			INNER JOIN '.$this->db->dbprefix('items').' items ON items.item_id = lots.item_id
+			LEFT JOIN '.$this->db->dbprefix('item_variations').' variations ON variations.id = lots.item_variation_id
+			WHERE lots.location_id = ?
+			AND lots.status = ?
+			AND lots.quantity_remaining > 0
+			AND lots.lot_code NOT LIKE ?
+			AND (lots.expire_date IS NULL OR lots.expire_date >= CURDATE())
+			ORDER BY items.name ASC, CASE WHEN lots.expire_date IS NULL THEN 1 ELSE 0 END ASC, lots.expire_date ASC, lots.received_at ASC';
+		$query = $this->db->query($sql, array((int)$location_id, 'active', 'QUEBRADO-%'));
+		return $query ? $query->result() : array();
 	}
 
 	public function get_inventory($route_id)
 	{
-		$this->db->select('route_inventory_lots.*, items.name AS item_name, item_variations.name AS variation_name');
-		$this->db->from('route_inventory_lots');
-		$this->db->join('items', 'items.item_id = route_inventory_lots.item_id');
-		$this->db->join('item_variations', 'item_variations.id = route_inventory_lots.item_variation_id', 'left');
-		$this->db->where('route_inventory_lots.route_id', (int)$route_id);
-		$this->db->order_by('items.name', 'ASC');
-		$this->db->order_by('route_inventory_lots.route_inventory_lot_id', 'ASC');
-		return $this->db->get()->result();
+		$sql = 'SELECT route_lots.*, items.name AS item_name, variations.name AS variation_name
+			FROM '.$this->db->dbprefix('route_inventory_lots').' route_lots
+			INNER JOIN '.$this->db->dbprefix('items').' items ON items.item_id = route_lots.item_id
+			LEFT JOIN '.$this->db->dbprefix('item_variations').' variations ON variations.id = route_lots.item_variation_id
+			WHERE route_lots.route_id = ?
+			ORDER BY items.name ASC, route_lots.route_inventory_lot_id ASC';
+		$query = $this->db->query($sql, array((int)$route_id));
+		return $query ? $query->result() : array();
 	}
 
 	public function load_from_warehouse($route_id, $source_lot_id, $quantity, $employee_id, $notes = '')
