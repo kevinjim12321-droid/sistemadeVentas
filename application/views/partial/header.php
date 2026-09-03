@@ -478,6 +478,14 @@ if (is_on_demo_host()) { ?>
 				<?php 
 				} } 
 				?>
+				<?php if ($this->Employee->has_module_permission('receivings', $this->Employee->get_logged_in_employee_info()->person_id)) { ?>
+				<li <?php echo $this->uri->segment(1) == 'routes' ? 'class="active routes"' : 'class="routes"'; ?>>
+					<a tabindex="-1" href="<?php echo site_url('routes'); ?>" class="waves-effect waves-light">
+						<i class="icon ti-truck"></i>
+						<span class="text">Rutas</span>
+					</a>
+				</li>
+				<?php } ?>
 				<?php
 				if ($this->config->item('timeclock')) 
 				{
