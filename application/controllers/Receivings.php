@@ -41,15 +41,17 @@ class Receivings extends Secure_area
 		$route_purchase_id = (int)$this->session->userdata('route_purchase_id');
 		if ($route_purchase_id)
 		{
-			$this->session->unset_userdata('route_purchase_id');
 			$route = $this->Route->get_info($route_purchase_id);
 			if ($route && $route->status === 'open' && (int)$route->location_id === (int)$this->Employee->get_logged_in_employee_current_location_id())
 			{
-				$this->cart->destroy();
+				//Build a fresh receiving cart instead of resetting the session cart in
+				//place. Some PHP versions fail during that first destructive reset.
+				$this->cart = new PHPPOSCartRecv(array('cart_id' => 'receiving', 'mode' => 'receive'));
 				$this->cart->route_id = (int)$route->route_id;
 				$this->cart->route_name = $route->name;
 				$this->cart->save();
 			}
+			$this->session->unset_userdata('route_purchase_id');
 		}
 		cache_item_and_item_kit_cart_info($this->cart->get_items());
 	}
