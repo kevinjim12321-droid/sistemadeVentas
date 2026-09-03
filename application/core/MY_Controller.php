@@ -12,8 +12,11 @@ function force_http_if_needed()
 					$is_credit_card_processing = ($CI->uri->segment(1) == 'locations' || ($CI->Location->get_info_for_key('emv_merchant_id') && $CI->Location->get_info_for_key('com_port') && $CI->Location->get_info_for_key('listener_port')));
 					if ($is_credit_card_processing)
 					{
-						//Force http if we are not Chrome 94 or newer (We can't do EMV via http anymore)
-						if (!($CI->agent->browser() == 'Chrome' && $CI->agent->version() >= 94))
+						//Force http if we are not Chrome 94 or newer (We can't do EMV via http anymore).
+						//Cast the version: on PHP 8 "139.0.0.0" >= 94 is a string compare and
+						//evaluates false, which forced http on modern Chrome and -- behind a
+						//host that forces https -- produced an infinite redirect on /locations.
+						if (!($CI->agent->browser() == 'Chrome' && (float)$CI->agent->version() >= 94))
 						{
 							force_http();
 						}
