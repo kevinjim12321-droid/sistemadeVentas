@@ -655,6 +655,83 @@ class Route extends MY_Model
 		return $purchases;
 	}
 
+	public function get_purchases_total($route_id)
+	{
+		$total = 0;
+		foreach ($this->get_purchase_history($route_id) as $purchase)
+		{
+			$total += (float)$purchase->total;
+		}
+		return $total;
+	}
+
+	/**
+	 * Consolidated figures for every route of a location within a date range.
+	 * Returns array('rows' => [...], 'totals' => object).
+	 */
+	public function get_range_summary($location_id, $start_date, $end_date)
+	{
+		$this->db->select('route_runs.*, people.first_name, people.last_name');
+		$this->db->from('route_runs');
+		$this->db->join('people', 'people.person_id = route_runs.employee_id', 'left');
+		$this->db->where('route_runs.location_id', (int)$location_id);
+		$this->db->where('route_runs.route_date >=', $start_date);
+		$this->db->where('route_runs.route_date <=', $end_date);
+		$this->db->order_by('route_runs.route_date', 'DESC');
+		$this->db->order_by('route_runs.route_id', 'DESC');
+		$routes = $this->db->get()->result();
+
+		$rows = array();
+		$keys = array('sold','cash','credit','credit_pending','collections','purchases','cash_purchases','expenses','fund','expected','counted','difference');
+		$totals = array_fill_keys($keys, 0);
+
+		foreach ($routes as $route)
+		{
+			$sales = $this->get_sales_history($route->route_id);
+			$ps = $this->get_route_payment_summary($sales);
+			$sold = 0;
+			foreach ($sales as $sale)
+			{
+				$sold += (float)$sale->total;
+			}
+			$rec = $this->get_cash_reconciliation($route->route_id);
+			$purchases_total = $this->get_purchases_total($route->route_id);
+			$counted = $route->counted_cash === NULL ? NULL : (float)$route->counted_cash;
+			$difference = $route->cash_difference === NULL ? NULL : (float)$route->cash_difference;
+
+			$rows[] = (object)array(
+				'route' => $route,
+				'sold' => $sold,
+				'cash' => (float)$ps['cash'],
+				'credit' => (float)$ps['credit'],
+				'credit_pending' => (float)$ps['credit_pending'],
+				'collections' => (float)$rec->credit_collected,
+				'purchases' => $purchases_total,
+				'cash_purchases' => (float)$rec->cash_purchases,
+				'expenses' => (float)$rec->expenses,
+				'fund' => (float)$rec->fund,
+				'expected' => (float)$rec->expected,
+				'counted' => $counted,
+				'difference' => $difference,
+			);
+
+			$totals['sold'] += $sold;
+			$totals['cash'] += (float)$ps['cash'];
+			$totals['credit'] += (float)$ps['credit'];
+			$totals['credit_pending'] += (float)$ps['credit_pending'];
+			$totals['collections'] += (float)$rec->credit_collected;
+			$totals['purchases'] += $purchases_total;
+			$totals['cash_purchases'] += (float)$rec->cash_purchases;
+			$totals['expenses'] += (float)$rec->expenses;
+			$totals['fund'] += (float)$rec->fund;
+			$totals['expected'] += (float)$rec->expected;
+			if ($counted !== NULL) $totals['counted'] += $counted;
+			if ($difference !== NULL) $totals['difference'] += $difference;
+		}
+
+		return array('rows' => $rows, 'totals' => (object)$totals);
+	}
+
 	public function get_all_for_location($location_id)
 	{
 		$this->db->select('route_runs.*, people.first_name, people.last_name');

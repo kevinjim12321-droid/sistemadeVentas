@@ -16,6 +16,13 @@ class Routes extends Secure_area
 		$location_id = $this->Employee->get_logged_in_employee_current_location_id();
 		$data['routes'] = $this->Route->get_all_for_location($location_id);
 		$data['employees'] = $this->Employee->get_all(0, 10000, 0, 'last_name', 'asc')->result();
+
+		$start = $this->input->get('start_date');
+		$end = $this->input->get('end_date');
+		$data['summary_start'] = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$start) ? $start : date('Y-m-01');
+		$data['summary_end'] = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$end) ? $end : date('Y-m-d');
+		$data['range_summary'] = $this->Route->get_range_summary($location_id, $data['summary_start'], $data['summary_end']);
+
 		$this->load->view('routes/index', $data);
 	}
 
