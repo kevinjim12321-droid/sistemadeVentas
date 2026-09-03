@@ -85,12 +85,9 @@ class Routes extends Secure_area
 		{
 			show_404();
 		}
-		require_once (APPPATH.'models/cart/PHPPOSCartRecv.php');
-		$cart = PHPPOSCartRecv::get_instance('receiving');
-		$cart->destroy();
-		$cart->route_id = (int)$route->route_id;
-		$cart->route_name = $route->name;
-		$cart->save();
+		//Receivings loads all cart dependencies. Stage the selected route in the
+		//session and let that controller initialize its own cart after redirecting.
+		$this->session->set_userdata('route_purchase_id', (int)$route->route_id);
 		redirect('receivings');
 	}
 
