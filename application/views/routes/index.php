@@ -22,6 +22,10 @@
 				</select></div>
 			</div>
 			<div class="form-group">
+				<?php echo form_label(lang('routes_cash_opening_field').':', 'opening_cash', array('class'=>'col-sm-3 control-label')); ?>
+				<div class="col-sm-9"><input class="form-control" type="number" min="0" step="any" name="opening_cash" id="opening_cash" placeholder="0.00"></div>
+			</div>
+			<div class="form-group">
 				<?php echo form_label(lang('common_comments').':', 'notes', array('class'=>'col-sm-3 control-label')); ?>
 				<div class="col-sm-9"><textarea class="form-control" name="notes" id="notes" rows="2"></textarea></div>
 			</div>

@@ -90,6 +90,175 @@ class Route extends MY_Model
 		{
 			$this->db->query('ALTER TABLE `'.$lots.'` ADD `supplier_id` int(10) DEFAULT NULL AFTER `item_variation_id`, ADD `receiving_id` int(10) DEFAULT NULL AFTER `supplier_id`, ADD `receiving_line` int(10) DEFAULT NULL AFTER `receiving_id`');
 		}
+
+		//Cash reconciliation (Fase 1): closing cuadre stored on the run itself.
+		if (!$this->db->field_exists('counted_cash', 'route_runs'))
+		{
+			$this->db->query('ALTER TABLE `'.$runs.'`'
+				.' ADD `counted_cash` decimal(23,10) DEFAULT NULL,'
+				.' ADD `expected_cash` decimal(23,10) DEFAULT NULL,'
+				.' ADD `cash_difference` decimal(23,10) DEFAULT NULL,'
+				.' ADD `cash_note` text NULL');
+		}
+
+		$cash = $this->db->dbprefix('route_cash_events');
+		$this->db->query("CREATE TABLE IF NOT EXISTS `{$cash}` (
+			`route_cash_event_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			`route_id` bigint(20) unsigned NOT NULL,
+			`event_type` varchar(20) NOT NULL,
+			`amount` decimal(23,10) NOT NULL DEFAULT '0.0000000000',
+			`notes` varchar(255) DEFAULT NULL,
+			`employee_id` int(10) DEFAULT NULL,
+			`occurred_at` datetime NOT NULL,
+			PRIMARY KEY (`route_cash_event_id`),
+			KEY `route_cash_route` (`route_id`,`event_type`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci");
+
+		$expenses = $this->db->dbprefix('route_expenses');
+		$this->db->query("CREATE TABLE IF NOT EXISTS `{$expenses}` (
+			`route_expense_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			`route_id` bigint(20) unsigned NOT NULL,
+			`amount` decimal(23,10) NOT NULL DEFAULT '0.0000000000',
+			`description` varchar(255) NOT NULL,
+			`employee_id` int(10) DEFAULT NULL,
+			`occurred_at` datetime NOT NULL,
+			PRIMARY KEY (`route_expense_id`),
+			KEY `route_expense_route` (`route_id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci");
+	}
+
+	// ---- Cash reconciliation (Fase 1) --------------------------------------
+
+	public function add_cash_event($route_id, $event_type, $amount, $notes, $employee_id)
+	{
+		$amount = (float)$amount;
+		if ($amount <= 0 || !in_array($event_type, array('opening', 'add'), TRUE))
+		{
+			return FALSE;
+		}
+		$route = $this->get_info($route_id);
+		if (!$route || $route->status !== 'open')
+		{
+			return FALSE;
+		}
+		return $this->db->insert('route_cash_events', array(
+			'route_id' => (int)$route_id,
+			'event_type' => $event_type,
+			'amount' => $this->decimal($amount),
+			'notes' => $notes !== NULL && $notes !== '' ? mb_substr(trim($notes), 0, 255) : NULL,
+			'employee_id' => $employee_id ? (int)$employee_id : NULL,
+			'occurred_at' => date('Y-m-d H:i:s'),
+		));
+	}
+
+	public function get_cash_events($route_id)
+	{
+		$this->db->where('route_id', (int)$route_id);
+		$this->db->order_by('occurred_at', 'ASC');
+		$this->db->order_by('route_cash_event_id', 'ASC');
+		return $this->db->get('route_cash_events')->result();
+	}
+
+	public function get_cash_fund_total($route_id)
+	{
+		$this->db->select_sum('amount', 'total');
+		$this->db->where('route_id', (int)$route_id);
+		$row = $this->db->get('route_cash_events')->row();
+		return $row ? (float)$row->total : 0;
+	}
+
+	public function add_expense($route_id, $amount, $description, $employee_id)
+	{
+		$amount = (float)$amount;
+		$description = trim((string)$description);
+		if ($amount <= 0 || $description === '')
+		{
+			return FALSE;
+		}
+		$route = $this->get_info($route_id);
+		if (!$route || $route->status !== 'open')
+		{
+			return FALSE;
+		}
+		return $this->db->insert('route_expenses', array(
+			'route_id' => (int)$route_id,
+			'amount' => $this->decimal($amount),
+			'description' => mb_substr($description, 0, 255),
+			'employee_id' => $employee_id ? (int)$employee_id : NULL,
+			'occurred_at' => date('Y-m-d H:i:s'),
+		));
+	}
+
+	public function get_expenses($route_id)
+	{
+		$this->db->select('route_expenses.*, people.first_name, people.last_name');
+		$this->db->from('route_expenses');
+		$this->db->join('people', 'people.person_id = route_expenses.employee_id', 'left');
+		$this->db->where('route_expenses.route_id', (int)$route_id);
+		$this->db->order_by('route_expenses.occurred_at', 'ASC');
+		$this->db->order_by('route_expenses.route_expense_id', 'ASC');
+		return $this->db->get()->result();
+	}
+
+	public function get_expenses_total($route_id)
+	{
+		$this->db->select_sum('amount', 'total');
+		$this->db->where('route_id', (int)$route_id);
+		$row = $this->db->get('route_expenses')->row();
+		return $row ? (float)$row->total : 0;
+	}
+
+	public function get_cash_purchases_total($route_id)
+	{
+		if (!$this->db->field_exists('route_id', 'receivings'))
+		{
+			return 0;
+		}
+		$sql = 'SELECT COALESCE(SUM(rp.payment_amount),0) AS total'
+			.' FROM '.$this->db->dbprefix('receivings_payments').' rp'
+			.' INNER JOIN '.$this->db->dbprefix('receivings').' r ON r.receiving_id = rp.receiving_id'
+			.' WHERE r.route_id = ? AND r.deleted = 0 AND r.suspended = 0'
+			.' AND rp.payment_type = ?';
+		$row = $this->db->query($sql, array((int)$route_id, lang('common_cash')))->row();
+		return $row ? (float)$row->total : 0;
+	}
+
+	/**
+	 * Full cash picture for the reconciliation screen.
+	 * expected = fund + cash sales + credit collections - cash purchases - expenses
+	 */
+	public function get_cash_reconciliation($route_id)
+	{
+		$sales = $this->get_sales_history($route_id);
+		$payment_summary = $this->get_route_payment_summary($sales);
+
+		$fund = $this->get_cash_fund_total($route_id);
+		$cash_sales = (float)$payment_summary['cash'];
+		//Credit collections done on the route arrive in Fase 2 (dedicated
+		//"registrar abono en ruta" action). Kept here so the cuadre layout and
+		//the expected-cash formula are already in place.
+		$credit_collected = 0;
+		$cash_purchases = $this->get_cash_purchases_total($route_id);
+		$expenses = $this->get_expenses_total($route_id);
+
+		$expected = $fund + $cash_sales + $credit_collected - $cash_purchases - $expenses;
+
+		return (object)array(
+			'fund' => $fund,
+			'cash_sales' => $cash_sales,
+			'credit_collected' => $credit_collected,
+			'cash_purchases' => $cash_purchases,
+			'expenses' => $expenses,
+			'expected' => $expected,
+		);
+	}
+
+	public function get_remaining_inventory_quantity($route_id)
+	{
+		$this->db->select_sum('quantity_remaining', 'remaining');
+		$this->db->where('route_id', (int)$route_id);
+		$row = $this->db->get('route_inventory_lots')->row();
+		return $row ? (float)$row->remaining : 0;
 	}
 
 	public function receive_purchase($route_id, $item, $quantity, $receiving_id, $receiving_line, $supplier_id, $employee_id, $received_at)
@@ -680,19 +849,52 @@ class Route extends MY_Model
 		return TRUE;
 	}
 
-	public function close($route_id, $employee_id)
+	public function close($route_id, $employee_id, $counted_cash = NULL, $cash_note = '')
 	{
-		$this->db->select_sum('quantity_remaining', 'remaining');
-		$this->db->where('route_id', (int)$route_id);
-		$row = $this->db->get('route_inventory_lots')->row();
-		if ($row && (float)$row->remaining > 0.0000000001)
+		$route = $this->get_info($route_id);
+		if (!$route || $route->status !== 'open')
 		{
 			return FALSE;
 		}
+
+		$reconciliation = $this->get_cash_reconciliation($route_id);
+		$counted = $counted_cash === NULL || $counted_cash === '' ? NULL : (float)$counted_cash;
+		$difference = $counted === NULL ? NULL : $counted - (float)$reconciliation->expected;
+
 		$now = date('Y-m-d H:i:s');
 		$this->db->where('route_id', (int)$route_id);
 		$this->db->where('status', 'open');
-		return $this->db->update('route_runs', array('status'=>'closed', 'closed_by'=>(int)$employee_id, 'closed_at'=>$now, 'updated_at'=>$now));
+		return $this->db->update('route_runs', array(
+			'status' => 'closed',
+			'closed_by' => (int)$employee_id,
+			'closed_at' => $now,
+			'updated_at' => $now,
+			'expected_cash' => $this->decimal($reconciliation->expected),
+			'counted_cash' => $counted === NULL ? NULL : $this->decimal($counted),
+			'cash_difference' => $difference === NULL ? NULL : $this->decimal($difference),
+			'cash_note' => $cash_note !== NULL && trim($cash_note) !== '' ? trim($cash_note) : NULL,
+		));
+	}
+
+	public function return_all_inventory($route_id, $employee_id, $notes = '')
+	{
+		$route = $this->get_info($route_id);
+		if (!$route || $route->status !== 'open')
+		{
+			return FALSE;
+		}
+		$this->db->where('route_id', (int)$route_id);
+		$this->db->where('quantity_remaining >', 0);
+		$lots = $this->db->get('route_inventory_lots')->result();
+		$all_ok = TRUE;
+		foreach ($lots as $lot)
+		{
+			if (!$this->return_to_warehouse($route_id, (int)$lot->route_inventory_lot_id, (float)$lot->quantity_remaining, $employee_id, $notes))
+			{
+				$all_ok = FALSE;
+			}
+		}
+		return $all_ok;
 	}
 
 	private function decimal($value)

@@ -42,6 +42,11 @@ class Routes extends Secure_area
 			$this->session->set_flashdata('route_error', lang('routes_create_error'));
 			redirect('routes');
 		}
+		$opening_cash = (float)$this->input->post('opening_cash');
+		if ($opening_cash > 0)
+		{
+			$this->Route->add_cash_event($route_id, 'opening', $opening_cash, lang('routes_cash_opening'), $this->Employee->get_logged_in_employee_info()->person_id);
+		}
 		redirect('routes/view/'.$route_id);
 	}
 
@@ -59,7 +64,59 @@ class Routes extends Secure_area
 		$data['route_sales'] = $this->Route->get_sales_history($route_id);
 		$data['payment_summary'] = $this->Route->get_route_payment_summary($data['route_sales']);
 		$data['route_purchases'] = $this->Route->get_purchase_history($route_id);
+		$data['cash_events'] = $this->Route->get_cash_events($route_id);
+		$data['route_expenses'] = $this->Route->get_expenses($route_id);
+		$data['reconciliation'] = $this->Route->get_cash_reconciliation($route_id);
 		$this->load->view('routes/view', $data);
+	}
+
+	public function add_cash($route_id)
+	{
+		$route = $this->Route->get_info($route_id);
+		if (!$route || $route->status !== 'open' || (int)$route->location_id !== (int)$this->Employee->get_logged_in_employee_current_location_id())
+		{
+			show_404();
+		}
+		$result = $this->Route->add_cash_event($route_id, 'add', (float)$this->input->post('amount'), $this->input->post('notes'), $this->Employee->get_logged_in_employee_info()->person_id);
+		$this->session->set_flashdata($result ? 'route_success' : 'route_error', $result ? lang('routes_cash_added') : lang('routes_cash_error'));
+		redirect('routes/view/'.$route_id);
+	}
+
+	public function add_expense($route_id)
+	{
+		$route = $this->Route->get_info($route_id);
+		if (!$route || $route->status !== 'open' || (int)$route->location_id !== (int)$this->Employee->get_logged_in_employee_current_location_id())
+		{
+			show_404();
+		}
+		$result = $this->Route->add_expense($route_id, (float)$this->input->post('amount'), $this->input->post('description'), $this->Employee->get_logged_in_employee_info()->person_id);
+		$this->session->set_flashdata($result ? 'route_success' : 'route_error', $result ? lang('routes_expense_added') : lang('routes_expense_error'));
+		redirect('routes/view/'.$route_id);
+	}
+
+	public function return_all($route_id)
+	{
+		$route = $this->Route->get_info($route_id);
+		if (!$route || $route->status !== 'open' || (int)$route->location_id !== (int)$this->Employee->get_logged_in_employee_current_location_id())
+		{
+			show_404();
+		}
+		$result = $this->Route->return_all_inventory($route_id, $this->Employee->get_logged_in_employee_info()->person_id, lang('routes_return_all_note'));
+		$this->session->set_flashdata($result ? 'route_success' : 'route_error', $result ? lang('routes_return_all_success') : lang('routes_return_all_error'));
+		redirect('routes/view/'.$route_id);
+	}
+
+	public function close_form($route_id)
+	{
+		$route = $this->Route->get_info($route_id);
+		if (!$route || $route->status !== 'open' || (int)$route->location_id !== (int)$this->Employee->get_logged_in_employee_current_location_id())
+		{
+			show_404();
+		}
+		$data['route'] = $route;
+		$data['reconciliation'] = $this->Route->get_cash_reconciliation($route_id);
+		$data['remaining_inventory'] = $this->Route->get_remaining_inventory_quantity($route_id);
+		$this->load->view('routes/close', $data);
 	}
 
 	public function sell($route_id)
@@ -134,7 +191,12 @@ class Routes extends Secure_area
 		{
 			show_404();
 		}
-		$result = $this->Route->close($route_id, $this->Employee->get_logged_in_employee_info()->person_id);
+		$result = $this->Route->close(
+			$route_id,
+			$this->Employee->get_logged_in_employee_info()->person_id,
+			$this->input->post('counted_cash'),
+			(string)$this->input->post('cash_note')
+		);
 		$this->session->set_flashdata($result ? 'route_success' : 'route_error', $result ? lang('routes_close_success') : lang('routes_close_error'));
 		redirect('routes/view/'.$route_id);
 	}

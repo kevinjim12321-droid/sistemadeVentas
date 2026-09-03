@@ -71,6 +71,75 @@
 	</div>
 </div>
 
+<div class="panel panel-piluku">
+	<div class="panel-heading"><h3 class="panel-title"><?php echo lang('routes_cash_control'); ?></h3></div>
+	<div class="panel-body">
+		<div class="table-responsive">
+		<table class="table table-bordered" style="max-width:520px">
+			<tbody>
+				<tr><td><?php echo lang('routes_cash_opening'); ?> / agregado</td><td class="text-right"><strong><?php echo to_currency($reconciliation->fund); ?></strong></td></tr>
+				<tr><td>+ Ventas en efectivo</td><td class="text-right"><?php echo to_currency($reconciliation->cash_sales); ?></td></tr>
+				<tr><td>+ Abonos a créditos cobrados</td><td class="text-right"><?php echo to_currency($reconciliation->credit_collected); ?></td></tr>
+				<tr><td>− Compras pagadas en efectivo</td><td class="text-right"><?php echo to_currency($reconciliation->cash_purchases); ?></td></tr>
+				<tr><td>− Gastos de la ruta</td><td class="text-right"><?php echo to_currency($reconciliation->expenses); ?></td></tr>
+				<tr class="active"><td><strong><?php echo lang('routes_expected_cash'); ?></strong></td><td class="text-right"><strong><?php echo to_currency($reconciliation->expected); ?></strong></td></tr>
+				<?php if ($route->status !== 'open') { ?>
+				<tr><td><?php echo lang('routes_counted_cash'); ?></td><td class="text-right"><?php echo $route->counted_cash !== NULL ? to_currency($route->counted_cash) : '-'; ?></td></tr>
+				<tr><td><?php echo lang('routes_cash_difference'); ?></td><td class="text-right"><?php
+					if ($route->cash_difference === NULL) { echo '-'; }
+					else {
+						$diff = (float)$route->cash_difference;
+						$label = $diff < 0 ? lang('routes_cash_shortage') : ($diff > 0 ? lang('routes_cash_overage') : '');
+						echo '<span class="'.($diff < 0 ? 'text-danger' : ($diff > 0 ? 'text-warning' : '')).'"><strong>'.to_currency($diff).'</strong>'.($label ? ' ('.$label.')' : '').'</span>';
+					}
+				?></td></tr>
+				<?php if ($route->cash_note) { ?><tr><td><?php echo lang('routes_cash_note'); ?></td><td><?php echo nl2br(H($route->cash_note)); ?></td></tr><?php } ?>
+				<?php } ?>
+			</tbody>
+		</table>
+		</div>
+
+		<?php if ($route->status === 'open') { ?>
+		<div class="row">
+			<div class="col-sm-6">
+				<h4><?php echo lang('routes_cash_add'); ?></h4>
+				<?php echo form_open('routes/add_cash/'.$route->route_id, array('class'=>'form-inline')); ?>
+					<input class="form-control" style="width:120px" type="number" min="0.0000000001" step="any" name="amount" placeholder="<?php echo lang('common_amount'); ?>" required>
+					<input class="form-control" type="text" name="notes" placeholder="<?php echo lang('common_comments'); ?>">
+					<button class="btn btn-default" type="submit"><?php echo lang('common_add'); ?></button>
+				<?php echo form_close(); ?>
+			</div>
+			<div class="col-sm-6">
+				<h4><?php echo lang('routes_expense_add'); ?></h4>
+				<?php echo form_open('routes/add_expense/'.$route->route_id, array('class'=>'form-inline')); ?>
+					<input class="form-control" style="width:120px" type="number" min="0.0000000001" step="any" name="amount" placeholder="<?php echo lang('common_amount'); ?>" required>
+					<input class="form-control" type="text" name="description" placeholder="<?php echo lang('common_description'); ?>" required>
+					<button class="btn btn-default" type="submit"><?php echo lang('common_add'); ?></button>
+				<?php echo form_close(); ?>
+			</div>
+		</div>
+		<?php } ?>
+
+		<h4 style="margin-top:20px"><?php echo lang('routes_expenses_title'); ?></h4>
+		<div class="table-responsive">
+		<table class="table table-striped table-bordered">
+			<thead><tr><th><?php echo lang('common_date'); ?></th><th><?php echo lang('common_description'); ?></th><th><?php echo lang('routes_seller'); ?></th><th class="text-right"><?php echo lang('common_amount'); ?></th></tr></thead>
+			<tbody>
+			<?php foreach ($route_expenses as $expense) { ?>
+			<tr>
+				<td><?php echo H(date(get_date_format().' '.get_time_format(), strtotime($expense->occurred_at))); ?></td>
+				<td><?php echo H($expense->description); ?></td>
+				<td><?php echo H(trim($expense->first_name.' '.$expense->last_name)); ?></td>
+				<td class="text-right"><?php echo to_currency($expense->amount); ?></td>
+			</tr>
+			<?php } ?>
+			<?php if (!$route_expenses) { ?><tr><td colspan="4" class="text-center"><?php echo lang('routes_no_expenses'); ?></td></tr><?php } ?>
+			</tbody>
+		</table>
+		</div>
+	</div>
+</div>
+
 <?php if ($route->status === 'open') { ?>
 <div class="panel panel-piluku">
 	<div class="panel-heading"><h3 class="panel-title"><?php echo lang('routes_load_inventory'); ?></h3></div>
@@ -127,7 +196,12 @@
 		</table>
 		<p>
 			<?php echo anchor('routes', lang('common_back'), array('class'=>'btn btn-primary')); ?>
-			<?php if ($route->status === 'open') { ?><?php echo form_open('routes/close/'.$route->route_id, array('style'=>'display:inline-block; margin-left:5px')); ?><button class="btn btn-danger" type="submit"><?php echo lang('routes_close'); ?></button><?php echo form_close(); ?><?php } ?>
+			<?php if ($route->status === 'open') { ?>
+				<?php if ($route_inventory) { ?>
+				<?php echo form_open('routes/return_all/'.$route->route_id, array('style'=>'display:inline-block; margin-left:5px', 'onsubmit'=>"return confirm('".lang('routes_return_all')." ?');")); ?><button class="btn btn-warning" type="submit"><?php echo lang('routes_return_all'); ?></button><?php echo form_close(); ?>
+				<?php } ?>
+				<?php echo anchor('routes/close_form/'.$route->route_id, lang('routes_close'), array('class'=>'btn btn-danger', 'style'=>'margin-left:5px')); ?>
+			<?php } ?>
 		</p>
 	</div>
 </div>
