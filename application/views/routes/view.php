@@ -164,30 +164,87 @@
 		<?php echo form_close(); ?>
 	</div>
 </div>
+
+<div class="panel panel-piluku">
+	<div class="panel-heading"><h3 class="panel-title"><?php echo lang('routes_damage_title'); ?></h3></div>
+	<div class="panel-body">
+		<?php echo form_open('routes/classify_damage/'.$route->route_id, array('class'=>'form-horizontal')); ?>
+			<div class="form-group">
+				<?php echo form_label(lang('routes_damage_lot').':', 'route_inventory_lot_id', array('class'=>'col-sm-3 control-label')); ?>
+				<div class="col-sm-9"><select class="form-control" name="route_inventory_lot_id" required>
+					<option value=""><?php echo lang('common_select'); ?></option>
+					<?php foreach ($route_inventory as $lot) { if ($lot->condition_type !== 'good' || (float)$lot->quantity_remaining <= 0) continue; ?>
+					<option value="<?php echo (int)$lot->route_inventory_lot_id; ?>"><?php echo H($lot->item_name.($lot->variation_name ? ' — '.$lot->variation_name : '').' | '.$lot->lot_code.' | '.lang('routes_remaining').': '.to_quantity($lot->quantity_remaining)); ?></option>
+					<?php } ?>
+				</select></div>
+			</div>
+			<div class="form-group">
+				<?php echo form_label(lang('common_quantity').':', 'quantity', array('class'=>'col-sm-3 control-label')); ?>
+				<div class="col-sm-9"><input class="form-control" type="number" min="0.0000000001" step="any" name="quantity" required></div>
+			</div>
+			<div class="form-group">
+				<?php echo form_label(lang('routes_damage_classification').':', 'classification', array('class'=>'col-sm-3 control-label')); ?>
+				<div class="col-sm-9"><select class="form-control" name="classification" id="damage_classification" required>
+					<option value="broken"><?php echo lang('routes_damage_broken'); ?></option>
+					<option value="loss"><?php echo lang('routes_damage_loss'); ?></option>
+				</select></div>
+			</div>
+			<div class="form-group" id="damage_price_group">
+				<?php echo form_label(lang('routes_damage_price').':', 'unit_price', array('class'=>'col-sm-3 control-label')); ?>
+				<div class="col-sm-9"><input class="form-control" type="number" min="0" step="any" name="unit_price" placeholder="<?php echo lang('common_unit_price'); ?>"></div>
+			</div>
+			<div class="form-group">
+				<?php echo form_label(lang('common_comments').':', 'notes', array('class'=>'col-sm-3 control-label')); ?>
+				<div class="col-sm-9"><input class="form-control" type="text" name="notes"></div>
+			</div>
+			<div class="text-right"><button class="btn btn-warning" type="submit"><?php echo lang('routes_damage_submit'); ?></button></div>
+		<?php echo form_close(); ?>
+		<script>
+		(function () {
+			var sel = document.getElementById('damage_classification');
+			var priceGroup = document.getElementById('damage_price_group');
+			function sync() { priceGroup.style.display = sel.value === 'broken' ? '' : 'none'; }
+			sel.addEventListener('change', sync); sync();
+		})();
+		</script>
+	</div>
+</div>
 <?php } ?>
 
 <div class="panel panel-piluku">
 	<div class="panel-heading"><h3 class="panel-title"><?php echo lang('routes_inventory'); ?></h3></div>
 	<div class="panel-body table-responsive">
+		<?php if ($damage_summary->broken > 0 || $damage_summary->loss > 0) { ?>
+		<p>
+			<?php if ($damage_summary->broken > 0) { ?><span class="label label-warning"><?php echo lang('routes_damage_broken_total').': '.to_quantity($damage_summary->broken); ?></span> <?php } ?>
+			<?php if ($damage_summary->loss > 0) { ?><span class="label label-danger"><?php echo lang('routes_damage_loss_total').': '.to_quantity($damage_summary->loss); ?></span><?php } ?>
+		</p>
+		<?php } ?>
 		<table class="table table-striped table-bordered">
 			<thead><tr><th><?php echo lang('common_item'); ?></th><th><?php echo lang('items_lot_code'); ?></th><th><?php echo lang('routes_condition'); ?></th><th><?php echo lang('routes_loaded'); ?></th><th><?php echo lang('routes_remaining'); ?></th><th><?php echo lang('common_cost_price'); ?></th><th><?php echo lang('common_unit_price'); ?></th><th><?php echo lang('items_expire_date'); ?></th><?php if ($route->status === 'open') { ?><th><?php echo lang('common_actions'); ?></th><?php } ?></tr></thead>
 			<tbody>
 			<?php foreach ($route_inventory as $lot) { ?><tr>
 				<td><?php echo H($lot->item_name.($lot->variation_name ? ' — '.$lot->variation_name : '')); ?></td>
 				<td><?php echo H($lot->lot_code); ?></td>
-				<td><?php echo $lot->condition_type === 'good' ? lang('routes_condition_good') : H($lot->condition_type); ?></td>
+				<td><?php
+					if ($lot->condition_type === 'good') { echo lang('routes_condition_good'); }
+					elseif ($lot->condition_type === 'broken') { echo '<span class="text-warning">'.lang('routes_condition_broken').'</span>'; }
+					else { echo H($lot->condition_type); }
+				?></td>
 				<td><?php echo to_quantity($lot->quantity_loaded); ?></td>
 				<td><strong><?php echo to_quantity($lot->quantity_remaining); ?></strong></td>
 				<td><?php echo to_currency($lot->unit_cost); ?></td>
 				<td><?php echo $lot->unit_price !== NULL ? to_currency($lot->unit_price) : '-'; ?></td>
 				<td><?php echo H($lot->expire_date ? $lot->expire_date : '-'); ?></td>
 				<?php if ($route->status === 'open') { ?><td>
-					<?php if ((float)$lot->quantity_remaining > 0) { ?>
+					<?php if ((float)$lot->quantity_remaining > 0 && $lot->condition_type === 'good') { ?>
 					<?php echo form_open('routes/return_lot/'.$route->route_id, array('class'=>'form-inline')); ?>
 						<input type="hidden" name="route_inventory_lot_id" value="<?php echo (int)$lot->route_inventory_lot_id; ?>">
 						<input class="form-control input-sm" style="width:90px" type="number" min="0.0000000001" max="<?php echo H($lot->quantity_remaining); ?>" step="any" name="quantity" placeholder="<?php echo lang('common_quantity'); ?>" required>
 						<button class="btn btn-warning btn-sm" type="submit"><?php echo lang('routes_return'); ?></button>
 					<?php echo form_close(); ?>
+					<?php } elseif ((float)$lot->quantity_remaining > 0 && $lot->condition_type === 'broken') { ?>
+					<span class="text-muted"><?php echo lang('routes_condition_broken'); ?></span>
 					<?php } ?>
 				</td><?php } ?>
 			</tr><?php } ?>

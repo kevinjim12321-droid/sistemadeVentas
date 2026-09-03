@@ -67,7 +67,28 @@ class Routes extends Secure_area
 		$data['cash_events'] = $this->Route->get_cash_events($route_id);
 		$data['route_expenses'] = $this->Route->get_expenses($route_id);
 		$data['reconciliation'] = $this->Route->get_cash_reconciliation($route_id);
+		$data['damage_summary'] = $this->Route->get_damage_summary($route_id);
 		$this->load->view('routes/view', $data);
+	}
+
+	public function classify_damage($route_id)
+	{
+		$route = $this->Route->get_info($route_id);
+		if (!$route || $route->status !== 'open' || (int)$route->location_id !== (int)$this->Employee->get_logged_in_employee_current_location_id())
+		{
+			show_404();
+		}
+		$result = $this->Route->classify_lot_damage(
+			$route_id,
+			(int)$this->input->post('route_inventory_lot_id'),
+			(float)$this->input->post('quantity'),
+			$this->input->post('classification'),
+			$this->input->post('unit_price'),
+			$this->Employee->get_logged_in_employee_info()->person_id,
+			(string)$this->input->post('notes')
+		);
+		$this->session->set_flashdata($result ? 'route_success' : 'route_error', $result ? lang('routes_damage_success') : lang('routes_damage_error'));
+		redirect('routes/view/'.$route_id);
 	}
 
 	public function add_cash($route_id)

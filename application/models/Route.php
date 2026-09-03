@@ -90,6 +90,12 @@ class Route extends MY_Model
 		{
 			$this->db->query('ALTER TABLE `'.$lots.'` ADD `supplier_id` int(10) DEFAULT NULL AFTER `item_variation_id`, ADD `receiving_id` int(10) DEFAULT NULL AFTER `supplier_id`, ADD `receiving_line` int(10) DEFAULT NULL AFTER `receiving_id`');
 		}
+		if (!$this->db->field_exists('quantity_broken', 'route_inventory_lots'))
+		{
+			$this->db->query('ALTER TABLE `'.$lots.'`'
+				." ADD `quantity_broken` decimal(23,10) NOT NULL DEFAULT '0.0000000000',"
+				." ADD `quantity_loss` decimal(23,10) NOT NULL DEFAULT '0.0000000000'");
+		}
 
 		//Cash reconciliation (Fase 1): closing cuadre stored on the run itself.
 		if (!$this->db->field_exists('counted_cash', 'route_runs'))
@@ -259,6 +265,119 @@ class Route extends MY_Model
 		$this->db->where('route_id', (int)$route_id);
 		$row = $this->db->get('route_inventory_lots')->row();
 		return $row ? (float)$row->remaining : 0;
+	}
+
+	/**
+	 * Classify part of a route lot as damaged.
+	 *  - 'broken': still sellable; a QUEBRADO- route lot is created (own price),
+	 *              the original quantity moves out of the good lot.
+	 *  - 'loss'  : total loss / merma; the quantity just leaves the route.
+	 * Warehouse stock is never touched (route inventory is already off the
+	 * location books once it is loaded or purchased on the route).
+	 */
+	public function classify_lot_damage($route_id, $route_inventory_lot_id, $quantity, $classification, $unit_price, $employee_id, $notes = '')
+	{
+		$quantity = (float)$quantity;
+		if ($quantity <= 0 || !in_array($classification, array('broken', 'loss'), TRUE))
+		{
+			return FALSE;
+		}
+
+		$this->db->trans_begin();
+		$route = $this->db->query('SELECT * FROM '.$this->db->dbprefix('route_runs').' WHERE route_id = ? FOR UPDATE', array((int)$route_id))->row();
+		$lot = $this->db->query('SELECT * FROM '.$this->db->dbprefix('route_inventory_lots').' WHERE route_inventory_lot_id = ? AND route_id = ? FOR UPDATE', array((int)$route_inventory_lot_id, (int)$route_id))->row();
+		if (!$route || $route->status !== 'open' || !$lot || $lot->condition_type !== 'good' || (float)$lot->quantity_remaining + 0.0000000001 < $quantity)
+		{
+			$this->db->trans_rollback();
+			return FALSE;
+		}
+
+		$now = date('Y-m-d H:i:s');
+		$balance = (float)$lot->quantity_remaining - $quantity;
+		$counter = $classification === 'loss' ? 'quantity_loss' : 'quantity_broken';
+		$this->db->where('route_inventory_lot_id', (int)$lot->route_inventory_lot_id);
+		$this->db->set('quantity_remaining', $this->decimal(max(0, $balance)));
+		$this->db->set($counter, $counter.'+'.$this->decimal($quantity), FALSE);
+		$this->db->set('updated_at', $now);
+		$this->db->update('route_inventory_lots');
+
+		$this->db->insert('route_movements', array(
+			'route_id' => (int)$route_id,
+			'route_inventory_lot_id' => (int)$lot->route_inventory_lot_id,
+			'movement_type' => $classification === 'loss' ? 'damage_loss' : 'damage_broken',
+			'quantity_delta' => $this->decimal(-$quantity),
+			'balance_after' => $this->decimal(max(0, $balance)),
+			'employee_id' => (int)$employee_id,
+			'occurred_at' => $now,
+			'notes' => trim($notes),
+		));
+
+		$this->db->insert('damaged_items_log', array(
+			'damaged_date' => $now,
+			'damaged_qty' => $this->decimal($quantity),
+			'damaged_reason' => $classification === 'loss' ? 'Estallado ruta / pérdida' : 'Quebrado vendible (ruta)',
+			'item_id' => (int)$lot->item_id,
+			'item_variation_id' => $lot->item_variation_id ? (int)$lot->item_variation_id : NULL,
+			'location_id' => (int)$route->location_id,
+			'sale_id' => NULL,
+			'damaged_reason_comment' => 'Ruta #'.(int)$route_id.' | Lote: '.$lot->lot_code.(trim($notes) !== '' ? ' | '.trim($notes) : ''),
+		));
+
+		if ($classification === 'broken')
+		{
+			$price = ($unit_price !== NULL && $unit_price !== '') ? (float)$unit_price : (float)$lot->unit_price;
+			$broken_code = mb_substr('QUEBRADO-'.$lot->lot_code.'-'.date('YmdHis'), 0, 100);
+			$this->db->insert('route_inventory_lots', array(
+				'route_id' => (int)$route_id,
+				'source_lot_id' => (int)$lot->source_lot_id,
+				'lot_code' => $broken_code,
+				'item_id' => (int)$lot->item_id,
+				'item_variation_id' => $lot->item_variation_id ? (int)$lot->item_variation_id : NULL,
+				'supplier_id' => $lot->supplier_id ? (int)$lot->supplier_id : NULL,
+				'receiving_id' => $lot->receiving_id ? (int)$lot->receiving_id : NULL,
+				'receiving_line' => $lot->receiving_line,
+				'manufactured_date' => $lot->manufactured_date,
+				'expire_date' => $lot->expire_date,
+				'unit_cost' => $lot->unit_cost,
+				'unit_price' => $this->decimal($price),
+				'condition_type' => 'broken',
+				'quantity_loaded' => $this->decimal($quantity),
+				'quantity_remaining' => $this->decimal($quantity),
+				'created_at' => $now,
+				'updated_at' => $now,
+			));
+			$broken_lot_id = (int)$this->db->insert_id();
+			$this->db->insert('route_movements', array(
+				'route_id' => (int)$route_id,
+				'route_inventory_lot_id' => $broken_lot_id,
+				'movement_type' => 'damage_broken_in',
+				'quantity_delta' => $this->decimal($quantity),
+				'balance_after' => $this->decimal($quantity),
+				'employee_id' => (int)$employee_id,
+				'occurred_at' => $now,
+				'notes' => trim($notes),
+			));
+		}
+
+		if ($this->db->trans_status() === FALSE)
+		{
+			$this->db->trans_rollback();
+			return FALSE;
+		}
+		$this->db->trans_commit();
+		return TRUE;
+	}
+
+	public function get_damage_summary($route_id)
+	{
+		$this->db->select_sum('quantity_broken', 'broken');
+		$this->db->select_sum('quantity_loss', 'loss');
+		$this->db->where('route_id', (int)$route_id);
+		$row = $this->db->get('route_inventory_lots')->row();
+		return (object)array(
+			'broken' => $row ? (float)$row->broken : 0,
+			'loss' => $row ? (float)$row->loss : 0,
+		);
 	}
 
 	public function receive_purchase($route_id, $item, $quantity, $receiving_id, $receiving_line, $supplier_id, $employee_id, $received_at)
@@ -885,6 +1004,7 @@ class Route extends MY_Model
 		}
 		$this->db->where('route_id', (int)$route_id);
 		$this->db->where('quantity_remaining >', 0);
+		$this->db->where('condition_type', 'good');
 		$lots = $this->db->get('route_inventory_lots')->result();
 		$all_ok = TRUE;
 		foreach ($lots as $lot)
