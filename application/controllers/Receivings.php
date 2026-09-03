@@ -44,10 +44,12 @@ class Receivings extends Secure_area
 			//Clear the staged route first so a failure here can never brick every
 			//future /receivings request with a persistent HTTP 500 loop.
 			$this->session->unset_userdata('route_purchase_id');
+			$this->_debug_route_purchase('start id='.$route_purchase_id);
 			try
 			{
 				$route = $this->Route->get_info($route_purchase_id);
 				$current_location_id = (int)$this->Employee->get_logged_in_employee_current_location_id();
+				$this->_debug_route_purchase('route='.($route ? 'found status='.$route->status.' loc='.$route->location_id : 'NULL').' current_loc='.$current_location_id);
 				if ($route && $route->status === 'open' && (int)$route->location_id === $current_location_id)
 				{
 					$this->cart->destroy();
@@ -55,19 +57,35 @@ class Receivings extends Secure_area
 					$this->cart->route_id = (int)$route->route_id;
 					$this->cart->route_name = isset($route->name) ? $route->name : NULL;
 					$this->cart->save();
+					$this->_debug_route_purchase('cart tagged route_id='.$this->cart->route_id.' saved OK');
+				}
+				else
+				{
+					$this->_debug_route_purchase('condition FALSE - cart not tagged');
 				}
 			}
 			catch (Throwable $e)
 			{
 				log_message('error', 'Route purchase cart init failed: '.$e->getMessage());
-				error_log('[route-purchase] '.$e->getMessage().' @ '.$e->getFile().':'.$e->getLine());
+				$this->_debug_route_purchase('EXCEPTION: '.$e->getMessage().' @ '.$e->getFile().':'.$e->getLine()."\n".$e->getTraceAsString());
 			}
 		}
 		cache_item_and_item_kit_cart_info($this->cart->get_items());
 	}
-	
+
+	//TEMP diagnostic: appends route-purchase flow steps to a readable log file.
+	//Remove once the route purchase issue is resolved.
+	private function _debug_route_purchase($message)
+	{
+		@file_put_contents(
+			APPPATH.'logs/route_purchase_debug.log',
+			date('Y-m-d H:i:s').' '.$message."\n",
+			FILE_APPEND
+		);
+	}
+
 	function index()
-	{	
+	{
 		$this->_reload(array(), false);
 	}
 
