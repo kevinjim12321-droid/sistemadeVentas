@@ -88,16 +88,7 @@ class Routes extends Secure_area
 		//Receivings loads all cart dependencies. Stage the selected route in the
 		//session and let that controller initialize its own cart after redirecting.
 		$this->session->set_userdata('route_purchase_id', (int)$route->route_id);
-		@file_put_contents(FCPATH.'rp_debug.log', date('Y-m-d H:i:s').' Routes::purchase set route_purchase_id='.(int)$route->route_id."\n", FILE_APPEND);
 		redirect('receivings');
-	}
-
-	//TEMP: dumps the route purchase diagnostics log. Remove once resolved.
-	public function debug_purchase()
-	{
-		$this->output->set_content_type('text/plain');
-		$file = FCPATH.'rp_debug.log';
-		$this->output->set_output(is_file($file) ? file_get_contents($file) : 'rp_debug.log does not exist yet');
 	}
 
 	public function load_lot($route_id)
