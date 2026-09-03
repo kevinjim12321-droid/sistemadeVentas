@@ -74,6 +74,102 @@ class Route extends MY_Model
 			KEY `route_movement_route` (`route_id`,`occurred_at`),
 			KEY `route_movement_lot` (`route_inventory_lot_id`)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci");
+
+		if (!$this->db->field_exists('route_id', 'sales'))
+		{
+			$this->db->query('ALTER TABLE `'.$this->db->dbprefix('sales').'` ADD `route_id` bigint(20) unsigned DEFAULT NULL, ADD KEY `sales_route_id` (`route_id`)');
+		}
+	}
+
+	public function get_available_lots_for_item($route_id, $item_id, $variation_id = NULL)
+	{
+		$this->db->from('route_inventory_lots');
+		$this->db->where('route_id', (int)$route_id);
+		$this->db->where('item_id', (int)$item_id);
+		if ($variation_id)
+		{
+			$this->db->where('item_variation_id', (int)$variation_id);
+		}
+		else
+		{
+			$this->db->where('item_variation_id IS NULL', NULL, FALSE);
+		}
+		$this->db->where('quantity_remaining >', 0);
+		$this->db->order_by('CASE WHEN expire_date IS NULL THEN 1 ELSE 0 END', '', FALSE);
+		$this->db->order_by('expire_date', 'ASC');
+		$this->db->order_by('route_inventory_lot_id', 'ASC');
+		return $this->db->get()->result();
+	}
+
+	public function get_available_quantity($route_id, $item_id, $variation_id = NULL)
+	{
+		$this->db->select_sum('quantity_remaining', 'available');
+		$this->db->where('route_id', (int)$route_id);
+		$this->db->where('item_id', (int)$item_id);
+		if ($variation_id)
+		{
+			$this->db->where('item_variation_id', (int)$variation_id);
+		}
+		else
+		{
+			$this->db->where('item_variation_id IS NULL', NULL, FALSE);
+		}
+		$row = $this->db->get('route_inventory_lots')->row();
+		return $row ? (float)$row->available : 0;
+	}
+
+	public function consume_for_sale($route_id, $item_id, $variation_id, $quantity, $sale_id, $sale_line, $employee_id)
+	{
+		$quantity = (float)$quantity;
+		if ($quantity <= 0) return FALSE;
+
+		$route = $this->db->query('SELECT * FROM '.$this->db->dbprefix('route_runs').' WHERE route_id = ? FOR UPDATE', array((int)$route_id))->row();
+		if (!$route || $route->status !== 'open') return FALSE;
+
+		$sql = 'SELECT * FROM '.$this->db->dbprefix('route_inventory_lots').' WHERE route_id = ? AND item_id = ? AND '.($variation_id ? 'item_variation_id = ?' : 'item_variation_id IS NULL').' AND quantity_remaining > 0 ORDER BY CASE WHEN expire_date IS NULL THEN 1 ELSE 0 END, expire_date ASC, route_inventory_lot_id ASC FOR UPDATE';
+		$params = $variation_id ? array((int)$route_id, (int)$item_id, (int)$variation_id) : array((int)$route_id, (int)$item_id);
+		$lots = $this->db->query($sql, $params)->result();
+		$available = 0;
+		foreach ($lots as $lot) $available += (float)$lot->quantity_remaining;
+		if ($available + 0.0000000001 < $quantity) return FALSE;
+
+		$remaining = $quantity;
+		$allocations = array();
+		$now = date('Y-m-d H:i:s');
+		foreach ($lots as $lot)
+		{
+			if ($remaining <= 0.0000000001) break;
+			$taken = min((float)$lot->quantity_remaining, $remaining);
+			$balance = (float)$lot->quantity_remaining - $taken;
+			$this->db->where('route_inventory_lot_id', (int)$lot->route_inventory_lot_id);
+			$this->db->set('quantity_remaining', $this->decimal(max(0, $balance)));
+			$this->db->set('quantity_sold', 'quantity_sold+'.$this->decimal($taken), FALSE);
+			$this->db->set('updated_at', $now);
+			$this->db->update('route_inventory_lots');
+			$this->db->insert('route_movements', array(
+				'route_id'=>(int)$route_id,
+				'route_inventory_lot_id'=>(int)$lot->route_inventory_lot_id,
+				'movement_type'=>'sale',
+				'quantity_delta'=>$this->decimal(-$taken),
+				'balance_after'=>$this->decimal(max(0, $balance)),
+				'employee_id'=>(int)$employee_id,
+				'occurred_at'=>$now,
+				'notes'=>'POS '.$sale_id.' | Línea '.$sale_line,
+			));
+			$allocations[] = array('quantity'=>$taken, 'unit_cost'=>(float)$lot->unit_cost, 'route_inventory_lot_id'=>(int)$lot->route_inventory_lot_id);
+			$remaining -= $taken;
+		}
+		return $allocations;
+	}
+
+	public function get_sales_summary($route_id)
+	{
+		if (!$this->db->field_exists('route_id', 'sales')) return (object)array('sale_count'=>0, 'total'=>0);
+		$this->db->select('COUNT(*) AS sale_count, COALESCE(SUM(total),0) AS total', FALSE);
+		$this->db->where('route_id', (int)$route_id);
+		$this->db->where('deleted', 0);
+		$this->db->where('suspended', 0);
+		return $this->db->get('sales')->row();
 	}
 
 	public function get_all_for_location($location_id)

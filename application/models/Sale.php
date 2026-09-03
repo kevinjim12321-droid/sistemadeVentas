@@ -836,6 +836,7 @@ class Sale extends MY_Model
 		$non_taxable = $cart->get_non_taxable_subtotal();
 			
 		$sales_data = array(
+			'route_id'=> !empty($cart->route_id) ? (int)$cart->route_id : NULL,
 			'customer_id'=> $customer_id > 0 ? $customer_id : null,
 			'employee_id'=>$employee_id,
 			'sold_by_employee_id' => $sold_by_employee_id,
@@ -1418,11 +1419,25 @@ class Sale extends MY_Model
 						unset($cur_item_variation_location_info);
 					}
 				}
-				$should_update_inventory = (((!$cart->is_ecommerce && $suspended < 2) || ($this->config->item('import_ecommerce_orders_suspended') && $suspended < 2)) || (!$cart->is_ecommerce && $this->Sale_types->can_remove_quantity($suspended)) || ($cart->is_ecommerce && $this->config->item('import_ecommerce_orders_suspended')));
+				$should_process_inventory = (((!$cart->is_ecommerce && $suspended < 2) || ($this->config->item('import_ecommerce_orders_suspended') && $suspended < 2)) || (!$cart->is_ecommerce && $this->Sale_types->can_remove_quantity($suspended)) || ($cart->is_ecommerce && $this->config->item('import_ecommerce_orders_suspended')));
+				$should_update_inventory = $should_process_inventory && empty($cart->route_id);
 				$quantity_multiplier = $item->quantity_unit_quantity !== NULL ? (float)$item->quantity_unit_quantity : 1;
 				$base_quantity_to_allocate = (float)$item->quantity * $quantity_multiplier;
 
-				if ($should_update_inventory && !$cur_item_info->is_service && !empty($cur_item_info->track_inventory_lots) && $base_quantity_to_allocate > 0)
+				if ($should_process_inventory && !empty($cart->route_id) && !$cur_item_info->is_service && $base_quantity_to_allocate > 0)
+				{
+					$this->load->model('Route');
+					$allocations = $this->Route->consume_for_sale($cart->route_id, $item->item_id, $item->variation_id ? $item->variation_id : NULL, $base_quantity_to_allocate, $sale_id, $line, $employee_id);
+					if ($allocations === FALSE)
+					{
+						$this->db->trans_rollback();
+						return -1;
+					}
+					$allocated_cost = 0;
+					foreach ($allocations as $allocation) $allocated_cost += (float)$allocation['quantity'] * (float)$allocation['unit_cost'];
+					$cost_price = ($allocated_cost / $base_quantity_to_allocate) * $quantity_multiplier;
+				}
+				elseif ($should_update_inventory && !$cur_item_info->is_service && !empty($cur_item_info->track_inventory_lots) && $base_quantity_to_allocate > 0)
 				{
 					$allocation_policy = $cur_item_info->lot_allocation_policy === Inventory_lot::POLICY_FIFO ? Inventory_lot::POLICY_FIFO : Inventory_lot::POLICY_FEFO;
 					$allocation_context = array('movement_type' => 'sale', 'sale_id' => $sale_id, 'sale_line' => $line, 'employee_id' => $employee_id);
@@ -1582,7 +1597,7 @@ class Sale extends MY_Model
 				}
 				
 				//Only do stock check + inventory update if we are NOT an estimate
-				if (((!$cart->is_ecommerce && $suspended < 2) || ($this->config->item('import_ecommerce_orders_suspended') && $suspended < 2)) || (!$cart->is_ecommerce && $this->Sale_types->can_remove_quantity($suspended)) || ($cart->is_ecommerce && $this->config->item('import_ecommerce_orders_suspended')))
+				if ($should_update_inventory)
 				{
 					$stock_recorder_check=false;
 					$out_of_stock_check=false;

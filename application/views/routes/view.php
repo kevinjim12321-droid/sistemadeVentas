@@ -4,6 +4,8 @@
 	<div class="panel-heading"><h3 class="panel-title"><?php echo H($route->name); ?> — <?php echo H($route->route_date); ?></h3></div>
 	<div class="panel-body">
 		<p><strong><?php echo lang('routes_seller'); ?>:</strong> <?php echo H(trim($route->first_name.' '.$route->last_name)); ?> &nbsp; <strong><?php echo lang('common_status'); ?>:</strong> <?php echo $route->status === 'open' ? lang('routes_status_open') : lang('routes_status_closed'); ?></p>
+		<p><strong>Ventas realizadas:</strong> <?php echo (int)$sales_summary->sale_count; ?> &nbsp; <strong>Total vendido:</strong> <?php echo to_currency($sales_summary->total); ?></p>
+		<?php if ($route->status === 'open') { ?><p><?php echo anchor('routes/sell/'.$route->route_id, '<span class="ion-cash"></span> Vender desde esta ruta', array('class'=>'btn btn-success')); ?></p><?php } ?>
 		<?php if ($route->notes) { ?><p><strong><?php echo lang('common_comments'); ?>:</strong> <?php echo nl2br(H($route->notes)); ?></p><?php } ?>
 		<?php if ($this->session->flashdata('route_success')) { ?><div class="alert alert-success"><?php echo H($this->session->flashdata('route_success')); ?></div><?php } ?>
 		<?php if ($this->session->flashdata('route_error')) { ?><div class="alert alert-danger"><?php echo H($this->session->flashdata('route_error')); ?></div><?php } ?>

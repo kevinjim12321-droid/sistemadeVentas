@@ -53,6 +53,7 @@ class Sales extends Secure_area
 		$this->load->helper('text');
 		$this->load->model('Supplier');
 		$this->load->model('Inventory_lot');
+		$this->load->model('Route');
 		
 		$this->cart = PHPPOSCartSale::get_instance('sale');
 		cache_item_and_item_kit_cart_info($this->cart->get_items());
@@ -2011,7 +2012,36 @@ class Sales extends Secure_area
 			return;
 		}
 		
-		if ($this->cart->get_mode() != 'return' && $this->cart->get_mode() != 'estimate' && $this->config->item('do_not_allow_out_of_stock_items_to_be_sold'))
+		if (!empty($this->cart->route_id))
+		{
+			$route = $this->Route->get_info($this->cart->route_id);
+			$required = array();
+			if (!$route || $route->status !== 'open' || (int)$route->location_id !== (int)$this->Employee->get_logged_in_employee_current_location_id())
+			{
+				$this->_reload(array('error' => 'La ruta seleccionada ya no está abierta o no pertenece a esta ubicación.'), false);
+				return;
+			}
+			foreach ($this->cart->get_items() as $item)
+			{
+				if (!($item instanceof PHPPOSCartItemSale))
+				{
+					$this->_reload(array('error' => 'Los kits todavía no se pueden vender desde una ruta. Agregue los productos individuales.'), false);
+					return;
+				}
+				$item_info = $this->Item->get_info($item->item_id);
+				if ($item_info->is_service || $item->quantity <= 0) continue;
+				$key = (int)$item->item_id.':'.($item->variation_id ? (int)$item->variation_id : 0);
+				$multiplier = $item->quantity_unit_quantity !== NULL ? (float)$item->quantity_unit_quantity : 1;
+				$required[$key] = isset($required[$key]) ? $required[$key] + ((float)$item->quantity * $multiplier) : ((float)$item->quantity * $multiplier);
+				if ($this->Route->get_available_quantity($this->cart->route_id, $item->item_id, $item->variation_id) + 0.0000000001 < $required[$key])
+				{
+					$this->_reload(array('error' => 'La cantidad solicitada de '.$item->name.' supera la existencia disponible en la ruta.'), false);
+					return;
+				}
+			}
+		}
+
+		if ($this->cart->get_mode() != 'return' && $this->cart->get_mode() != 'estimate' && empty($this->cart->route_id) && $this->config->item('do_not_allow_out_of_stock_items_to_be_sold'))
 		{
 			foreach($this->cart->get_items() as $item)
 			{

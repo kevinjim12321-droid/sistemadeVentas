@@ -1,3 +1,6 @@
+<?php if (!empty($this->cart->route_id)) { ?>
+<div class="alert alert-info" style="margin:10px 15px 0"><strong>Venta de ruta:</strong> <?php echo H($this->cart->route_name); ?>. El producto se descontará del inventario cargado en esta ruta. <?php echo anchor('routes/view/'.$this->cart->route_id, 'Volver a la ruta', array('class'=>'pull-right')); ?></div>
+<?php } ?>
 <script>
 	function amount_tendered_input_changed() 
 	{

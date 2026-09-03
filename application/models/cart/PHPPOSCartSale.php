@@ -47,6 +47,8 @@ class PHPPOSCartSale extends PHPPOSCart
 	public $was_last_edit_quantity;
 	
 	public $show_terms_and_conditions;
+	public $route_id;
+	public $route_name;
 
 	public function __construct(array $params=array())
 	{
@@ -558,6 +560,8 @@ class PHPPOSCartSale extends PHPPOSCart
 		$this->integrated_gift_card_balances = array();	
 		$this->taxjar_taxes = array();	
 		$this->was_last_edit_quantity = FALSE;
+		$this->route_id = NULL;
+		$this->route_name = NULL;
 
 		
 		$CI =& get_instance();
@@ -590,6 +594,10 @@ class PHPPOSCartSale extends PHPPOSCart
 
 		$CI =& get_instance();
 		$CI->load->model('Inventory_lot');
+		if ($this->route_id)
+		{
+			$CI->load->model('Route');
+		}
 		$location_id = $this->location_id ? $this->location_id : $CI->Employee->get_logged_in_employee_current_location_id();
 		$changed = FALSE;
 
@@ -603,6 +611,29 @@ class PHPPOSCartSale extends PHPPOSCart
 			$item_info = $CI->Item->get_info($item->item_id);
 			if ($item_info->is_service || empty($item_info->track_inventory_lots))
 			{
+				continue;
+			}
+
+			if ($this->route_id)
+			{
+				$route_lots = $CI->Route->get_available_lots_for_item($this->route_id, $item->item_id, $item->variation_id);
+				if (!$route_lots)
+				{
+					continue;
+				}
+				$route_lot = $route_lots[0];
+				$multiplier = $item->quantity_unit_quantity !== NULL ? (float)$item->quantity_unit_quantity : 1;
+				$new_price = $route_lot->unit_price !== NULL ? (float)$route_lot->unit_price * $multiplier : (float)$item->regular_price;
+				if ((int)$item->selected_route_lot_id !== (int)$route_lot->route_inventory_lot_id || abs((float)$item->unit_price - $new_price) > 0.0000000001)
+				{
+					$item->selected_lot_id = NULL;
+					$item->selected_route_lot_id = (int)$route_lot->route_inventory_lot_id;
+					$item->selected_lot_code = $route_lot->lot_code;
+					$item->selected_lot_quantity_available = (float)$route_lot->quantity_remaining;
+					$item->unit_price = $new_price;
+					$item->cost_price = (float)$route_lot->unit_cost * $multiplier;
+					$changed = TRUE;
+				}
 				continue;
 			}
 

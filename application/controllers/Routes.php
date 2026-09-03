@@ -55,7 +55,24 @@ class Routes extends Secure_area
 		$data['route'] = $route;
 		$data['route_inventory'] = $this->Route->get_inventory($route_id);
 		$data['warehouse_lots'] = $route->status === 'open' ? $this->Route->get_available_warehouse_lots($route->location_id) : array();
+		$data['sales_summary'] = $this->Route->get_sales_summary($route_id);
 		$this->load->view('routes/view', $data);
+	}
+
+	public function sell($route_id)
+	{
+		$route = $this->Route->get_info($route_id);
+		if (!$route || $route->status !== 'open' || (int)$route->location_id !== (int)$this->Employee->get_logged_in_employee_current_location_id())
+		{
+			show_404();
+		}
+		require_once (APPPATH.'models/cart/PHPPOSCartSale.php');
+		$cart = PHPPOSCartSale::get_instance('sale');
+		$cart->destroy();
+		$cart->route_id = (int)$route->route_id;
+		$cart->route_name = $route->name;
+		$cart->save();
+		redirect('sales');
 	}
 
 	public function load_lot($route_id)
