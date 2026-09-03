@@ -1,6 +1,9 @@
 <?php
 $has_cost_price_permission = $this->Employee->has_module_action_permission('items', 'see_cost_price', $this->Employee->get_logged_in_employee_info()->person_id);
 ?>
+<?php if (!empty($cart->route_id)) { ?>
+<div class="alert alert-info"><strong>Compra para ruta:</strong> <?php echo H($cart->route_name); ?>. Los productos recibidos se agregarán directamente al inventario de esta ruta y no a bodega. <?php echo anchor('routes/view/'.$cart->route_id, 'Volver a la ruta', array('class'=>'pull-right')); ?></div>
+<?php } ?>
 <style>
 	.editable-container .editable-input textarea.form-control 
 	{

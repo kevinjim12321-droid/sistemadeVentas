@@ -14,6 +14,8 @@ class PHPPOSCartRecv extends PHPPOSCart
 	public $is_po;
 	public $shipping_cost;
 	public $receiving_exchange_details;
+	public $route_id;
+	public $route_name;
 	public function __construct(array $params=array())
 	{
 		self::setup_defaults();
@@ -199,6 +201,12 @@ class PHPPOSCartRecv extends PHPPOSCart
 		
 		$cart->comment = $recv_info['comment'];
 		$cart->transfer_location_id = $recv_info['transfer_to_location_id'];
+		$cart->route_id = !empty($recv_info['route_id']) ? (int)$recv_info['route_id'] : NULL;
+		if ($cart->route_id)
+		{
+			$route = $CI->db->get_where('route_runs', array('route_id' => $cart->route_id))->row();
+			$cart->route_name = $route ? $route->name : NULL;
+		}
 
 		if ($recv_info['transfer_to_location_id'])
 		{
@@ -241,6 +249,8 @@ class PHPPOSCartRecv extends PHPPOSCart
 		$this->transfer_from_location_id = NULL;
 		$this->is_po = FALSE;
 		$this->shipping_cost = NULL;
+		$this->route_id = NULL;
+		$this->route_name = NULL;
 
 		$this->receiving_exchange_details = '';	
 		

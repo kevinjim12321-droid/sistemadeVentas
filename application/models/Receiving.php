@@ -144,6 +144,7 @@ class Receiving extends MY_Model
 		$recv_tax = $recv_total - $recv_subtotal;
 		
 		$receivings_data = array(
+		'route_id'=> !empty($cart->route_id) ? (int)$cart->route_id : NULL,
 		'supplier_id'=> $supplier_id > 0 ? $supplier_id : null,
 		'employee_id'=>$employee_id,
 		'payment_type'=>$payment_types,
@@ -606,8 +607,13 @@ class Receiving extends MY_Model
 				}
 			}
 			
+			//Base quantity received; route purchases use the same unit conversion
+			//without increasing the warehouse location quantity.
+			$inventory_to_add = $suspended == 0 ? $item->quantity : $item->quantity_received;
+			$inventory_to_add = $inventory_to_add*($item->quantity_unit_quantity !== NULL ? $item->quantity_unit_quantity : 1);
+
 			//Update stock quantity IF not a service item
-			if (!$cur_item_info->is_service)
+			if (!$cur_item_info->is_service && empty($cart->route_id))
 			{
 				
 				//This means we never adjusted quantity_received so we should accept all
@@ -681,7 +687,7 @@ class Receiving extends MY_Model
 				}
 			}
 
-			if ($suspended == 0 && $mode == 'receive' && !$cur_item_info->is_service && !empty($cur_item_info->track_inventory_lots) && $inventory_to_add > 0)
+			if ($suspended == 0 && $mode == 'receive' && empty($cart->route_id) && !$cur_item_info->is_service && !empty($cur_item_info->track_inventory_lots) && $inventory_to_add > 0)
 			{
 				$quantity_multiplier = $item->quantity_unit_quantity !== NULL ? (float)$item->quantity_unit_quantity : 1;
 				$base_unit_cost = ((float)$item->unit_price * (1 - ((float)$item->discount / 100))) / $quantity_multiplier;
@@ -705,6 +711,16 @@ class Receiving extends MY_Model
 				));
 
 				if (!$lot_id)
+				{
+					$this->db->trans_rollback();
+					return -1;
+				}
+			}
+
+			if ($suspended == 0 && $mode == 'receive' && !empty($cart->route_id) && !$cur_item_info->is_service && $inventory_to_add > 0)
+			{
+				$this->load->model('Route');
+				if (!$this->Route->receive_purchase($cart->route_id, $item, $inventory_to_add, $receiving_id, $line, $supplier_id, $employee_id, $receivings_data['receiving_time']))
 				{
 					$this->db->trans_rollback();
 					return -1;

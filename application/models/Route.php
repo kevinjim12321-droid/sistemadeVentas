@@ -41,6 +41,9 @@ class Route extends MY_Model
 			`lot_code` varchar(100) NOT NULL,
 			`item_id` int(10) NOT NULL,
 			`item_variation_id` int(10) DEFAULT NULL,
+			`supplier_id` int(10) DEFAULT NULL,
+			`receiving_id` int(10) DEFAULT NULL,
+			`receiving_line` int(10) DEFAULT NULL,
 			`manufactured_date` date DEFAULT NULL,
 			`expire_date` date DEFAULT NULL,
 			`unit_cost` decimal(23,10) NOT NULL DEFAULT '0.0000000000',
@@ -79,6 +82,59 @@ class Route extends MY_Model
 		{
 			$this->db->query('ALTER TABLE `'.$this->db->dbprefix('sales').'` ADD `route_id` bigint(20) unsigned DEFAULT NULL, ADD KEY `sales_route_id` (`route_id`)');
 		}
+		if (!$this->db->field_exists('route_id', 'receivings'))
+		{
+			$this->db->query('ALTER TABLE `'.$this->db->dbprefix('receivings').'` ADD `route_id` bigint(20) unsigned DEFAULT NULL, ADD KEY `receivings_route_id` (`route_id`)');
+		}
+		if (!$this->db->field_exists('supplier_id', 'route_inventory_lots'))
+		{
+			$this->db->query('ALTER TABLE `'.$lots.'` ADD `supplier_id` int(10) DEFAULT NULL AFTER `item_variation_id`, ADD `receiving_id` int(10) DEFAULT NULL AFTER `supplier_id`, ADD `receiving_line` int(10) DEFAULT NULL AFTER `receiving_id`');
+		}
+	}
+
+	public function receive_purchase($route_id, $item, $quantity, $receiving_id, $receiving_line, $supplier_id, $employee_id, $received_at)
+	{
+		$route = $this->db->query('SELECT * FROM '.$this->db->dbprefix('route_runs').' WHERE route_id = ? FOR UPDATE', array((int)$route_id))->row();
+		if (!$route || $route->status !== 'open' || $quantity <= 0) return FALSE;
+
+		$multiplier = $item->quantity_unit_quantity !== NULL ? (float)$item->quantity_unit_quantity : 1;
+		$unit_cost = ((float)$item->unit_price * (1 - ((float)$item->discount / 100))) / $multiplier;
+		$unit_price = (float)$item->selling_price / $multiplier;
+		$lot_code = !empty($item->lot_code) ? trim($item->lot_code) : 'RUTA-'.$route_id.'-REC-'.$receiving_id.'-'.$receiving_line;
+		$now = date('Y-m-d H:i:s');
+
+		$this->db->insert('route_inventory_lots', array(
+			'route_id'=>(int)$route_id,
+			'source_lot_id'=>0,
+			'lot_code'=>$lot_code,
+			'item_id'=>(int)$item->item_id,
+			'item_variation_id'=>$item->variation_id ? (int)$item->variation_id : NULL,
+			'supplier_id'=>$supplier_id ? (int)$supplier_id : NULL,
+			'receiving_id'=>(int)$receiving_id,
+			'receiving_line'=>(int)$receiving_line,
+			'manufactured_date'=>!empty($item->manufactured_date) ? $item->manufactured_date : NULL,
+			'expire_date'=>!empty($item->expire_date) ? $item->expire_date : NULL,
+			'unit_cost'=>$this->decimal($unit_cost),
+			'unit_price'=>$this->decimal($unit_price),
+			'condition_type'=>'good',
+			'quantity_loaded'=>$this->decimal($quantity),
+			'quantity_remaining'=>$this->decimal($quantity),
+			'created_at'=>$now,
+			'updated_at'=>$now,
+		));
+		$route_lot_id = $this->db->insert_id();
+		if (!$route_lot_id) return FALSE;
+		$this->db->insert('route_movements', array(
+			'route_id'=>(int)$route_id,
+			'route_inventory_lot_id'=>(int)$route_lot_id,
+			'movement_type'=>'purchase',
+			'quantity_delta'=>$this->decimal($quantity),
+			'balance_after'=>$this->decimal($quantity),
+			'employee_id'=>(int)$employee_id,
+			'occurred_at'=>$received_at ?: $now,
+			'notes'=>'RECV '.$receiving_id.($supplier_id ? ' | Proveedor '.$supplier_id : ''),
+		));
+		return TRUE;
 	}
 
 	public function get_available_lots_for_item($route_id, $item_id, $variation_id = NULL)
@@ -255,6 +311,34 @@ class Route extends MY_Model
 			}
 		}
 		return $summary;
+	}
+
+	public function get_purchase_history($route_id)
+	{
+		if (!$this->db->field_exists('route_id', 'receivings')) return array();
+		$sql = 'SELECT receivings.receiving_id, receivings.receiving_time, receivings.total, receivings.supplier_id, '
+			.'suppliers.company_name, people.first_name, people.last_name '
+			.'FROM '.$this->db->dbprefix('receivings').' receivings '
+			.'LEFT JOIN '.$this->db->dbprefix('suppliers').' suppliers ON suppliers.person_id = receivings.supplier_id '
+			.'LEFT JOIN '.$this->db->dbprefix('people').' people ON people.person_id = receivings.supplier_id '
+			.'WHERE receivings.route_id = ? AND receivings.deleted = 0 AND receivings.suspended = 0 '
+			.'ORDER BY receivings.receiving_time DESC, receivings.receiving_id DESC';
+		$purchases = $this->db->query($sql, array((int)$route_id))->result();
+		if (!$purchases) return array();
+		$ids = array_map(function($purchase) { return (int)$purchase->receiving_id; }, $purchases);
+		$this->db->select('receiving_id, payment_type, payment_amount');
+		$this->db->where_in('receiving_id', $ids);
+		$payments = array();
+		foreach ($this->db->get('receivings_payments')->result() as $payment)
+		{
+			if (!isset($payments[$payment->receiving_id])) $payments[$payment->receiving_id] = array();
+			$payments[$payment->receiving_id][] = $payment;
+		}
+		foreach ($purchases as $purchase)
+		{
+			$purchase->payments = isset($payments[$purchase->receiving_id]) ? $payments[$purchase->receiving_id] : array();
+		}
+		return $purchases;
 	}
 
 	public function get_all_for_location($location_id)
@@ -469,7 +553,43 @@ class Route extends MY_Model
 			return FALSE;
 		}
 
+		$created_source_lot = FALSE;
 		$source_lot = $this->db->query('SELECT * FROM '.$this->db->dbprefix('inventory_lots').' WHERE lot_id = ? FOR UPDATE', array((int)$route_lot->source_lot_id))->row();
+		if (!$source_lot && empty($route_lot->source_lot_id))
+		{
+			$this->load->model('Inventory_lot');
+			$new_lot_id = $this->Inventory_lot->create_lot(array(
+				'lot_code'=>$route_lot->lot_code,
+				'item_id'=>(int)$route_lot->item_id,
+				'item_variation_id'=>$route_lot->item_variation_id ? (int)$route_lot->item_variation_id : NULL,
+				'location_id'=>(int)$route->location_id,
+				'supplier_id'=>$route_lot->supplier_id ? (int)$route_lot->supplier_id : NULL,
+				'receiving_id'=>$route_lot->receiving_id ? (int)$route_lot->receiving_id : NULL,
+				'receiving_line'=>$route_lot->receiving_line,
+				'manufactured_date'=>$route_lot->manufactured_date,
+				'expire_date'=>$route_lot->expire_date,
+				'quantity_initial'=>$quantity,
+				'unit_cost'=>$route_lot->unit_cost,
+				'unit_price'=>$route_lot->unit_price,
+				'employee_id'=>$employee_id,
+				'movement_type'=>'route_return',
+				'reference_type'=>'route',
+				'reference_id'=>(string)(int)$route_id,
+				'notes'=>trim($notes),
+			));
+			if (!$new_lot_id)
+			{
+				$this->db->trans_rollback();
+				return FALSE;
+			}
+			$this->db->where('route_inventory_lot_id', (int)$route_lot->route_inventory_lot_id);
+			$this->db->update('route_inventory_lots', array('source_lot_id'=>(int)$new_lot_id));
+			$source_lot = $this->db->get_where('inventory_lots', array('lot_id'=>(int)$new_lot_id))->row();
+			$created_source_lot = TRUE;
+			// create_lot already placed this returned quantity in the warehouse lot;
+			// neutralize the generic increment performed below.
+			$source_lot->quantity_remaining = 0;
+		}
 		if (!$source_lot || (int)$source_lot->location_id !== (int)$route->location_id)
 		{
 			$this->db->trans_rollback();
@@ -522,17 +642,20 @@ class Route extends MY_Model
 			'occurred_at' => $now,
 			'notes' => trim($notes),
 		));
-		$this->db->insert('inventory_lot_movements', array(
-			'lot_id' => (int)$source_lot->lot_id,
-			'movement_type' => 'route_return',
-			'quantity_delta' => $this->decimal($quantity),
-			'balance_after' => $this->decimal($warehouse_lot_balance),
-			'reference_type' => 'route',
-			'reference_id' => (string)(int)$route_id,
-			'employee_id' => (int)$employee_id,
-			'occurred_at' => $now,
-			'notes' => trim($notes),
-		));
+		if (!$created_source_lot)
+		{
+			$this->db->insert('inventory_lot_movements', array(
+				'lot_id' => (int)$source_lot->lot_id,
+				'movement_type' => 'route_return',
+				'quantity_delta' => $this->decimal($quantity),
+				'balance_after' => $this->decimal($warehouse_lot_balance),
+				'reference_type' => 'route',
+				'reference_id' => (string)(int)$route_id,
+				'employee_id' => (int)$employee_id,
+				'occurred_at' => $now,
+				'notes' => trim($notes),
+			));
+		}
 
 		$current_row = $source_lot->item_variation_id
 			? $this->db->get_where('location_item_variations', array('item_variation_id' => (int)$source_lot->item_variation_id, 'location_id' => (int)$source_lot->location_id))->row()

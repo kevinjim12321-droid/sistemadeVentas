@@ -35,6 +35,7 @@ class Receivings extends Secure_area
 		$this->load->model('Appfile');
 		$this->load->model('Item_variation_location');
 		$this->load->model('Item_variations');
+		$this->load->model('Route');
 		$this->load->helper('text');
 		$this->cart = PHPPOSCartRecv::get_instance('receiving');
 		cache_item_and_item_kit_cart_info($this->cart->get_items());
@@ -1401,6 +1402,11 @@ class Receivings extends Secure_area
 	function change_recv($receiving_id)
 	{
 		$this->check_action_permission('edit_receiving');
+		$receiving_info = $this->Receiving->get_info($receiving_id)->row_array();
+		if (!empty($receiving_info['route_id']))
+		{
+			show_error('Las compras directas de ruta no pueden editarse. Registre una devolución a bodega o un ajuste de ruta para conservar la trazabilidad.', 409);
+		}
 		$this->cart->destroy();
 		$this->cart = PHPPOSCartRecv::get_instance_from_recv_id($receiving_id,'receiving');
 		$this->cart->is_editing_previous = TRUE;

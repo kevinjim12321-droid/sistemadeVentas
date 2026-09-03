@@ -58,6 +58,7 @@ class Routes extends Secure_area
 		$data['sales_summary'] = $this->Route->get_sales_summary($route_id);
 		$data['route_sales'] = $this->Route->get_sales_history($route_id);
 		$data['payment_summary'] = $this->Route->get_route_payment_summary($data['route_sales']);
+		$data['route_purchases'] = $this->Route->get_purchase_history($route_id);
 		$this->load->view('routes/view', $data);
 	}
 
@@ -75,6 +76,22 @@ class Routes extends Secure_area
 		$cart->route_name = $route->name;
 		$cart->save();
 		redirect('sales');
+	}
+
+	public function purchase($route_id)
+	{
+		$route = $this->Route->get_info($route_id);
+		if (!$route || $route->status !== 'open' || (int)$route->location_id !== (int)$this->Employee->get_logged_in_employee_current_location_id())
+		{
+			show_404();
+		}
+		require_once (APPPATH.'models/cart/PHPPOSCartRecv.php');
+		$cart = PHPPOSCartRecv::get_instance('receiving');
+		$cart->destroy();
+		$cart->route_id = (int)$route->route_id;
+		$cart->route_name = $route->name;
+		$cart->save();
+		redirect('receivings');
 	}
 
 	public function load_lot($route_id)

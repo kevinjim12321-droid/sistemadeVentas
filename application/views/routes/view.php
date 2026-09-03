@@ -5,7 +5,7 @@
 	<div class="panel-body">
 		<p><strong><?php echo lang('routes_seller'); ?>:</strong> <?php echo H(trim($route->first_name.' '.$route->last_name)); ?> &nbsp; <strong><?php echo lang('common_status'); ?>:</strong> <?php echo $route->status === 'open' ? lang('routes_status_open') : lang('routes_status_closed'); ?></p>
 		<p><strong>Ventas realizadas:</strong> <?php echo (int)$sales_summary->sale_count; ?> &nbsp; <strong>Total vendido:</strong> <?php echo to_currency($sales_summary->total); ?></p>
-		<?php if ($route->status === 'open') { ?><p><?php echo anchor('routes/sell/'.$route->route_id, '<span class="ion-cash"></span> Vender desde esta ruta', array('class'=>'btn btn-success')); ?></p><?php } ?>
+		<?php if ($route->status === 'open') { ?><p><?php echo anchor('routes/sell/'.$route->route_id, '<span class="ion-cash"></span> Vender desde esta ruta', array('class'=>'btn btn-success')); ?> <?php echo anchor('routes/purchase/'.$route->route_id, '<span class="ion-plus"></span> Comprar para esta ruta', array('class'=>'btn btn-primary')); ?></p><?php } ?>
 		<?php if ($route->notes) { ?><p><strong><?php echo lang('common_comments'); ?>:</strong> <?php echo nl2br(H($route->notes)); ?></p><?php } ?>
 		<?php if ($this->session->flashdata('route_success')) { ?><div class="alert alert-success"><?php echo H($this->session->flashdata('route_success')); ?></div><?php } ?>
 		<?php if ($this->session->flashdata('route_error')) { ?><div class="alert alert-danger"><?php echo H($this->session->flashdata('route_error')); ?></div><?php } ?>
@@ -46,6 +46,28 @@
 		</table>
 		</div>
 		<p class="text-muted">Los recibos de ruta utilizan el mismo historial de ventas, clientes y línea de crédito del sistema principal.</p>
+	</div>
+</div>
+
+<div class="panel panel-piluku">
+	<div class="panel-heading"><h3 class="panel-title">Compras realizadas para la ruta</h3></div>
+	<div class="panel-body table-responsive">
+		<table class="table table-striped table-bordered">
+			<thead><tr><th>Recibo</th><th>Fecha y hora</th><th>Proveedor</th><th>Forma de pago</th><th>Total comprado</th><th>Acciones</th></tr></thead>
+			<tbody>
+			<?php foreach ($route_purchases as $purchase) { ?>
+			<tr>
+				<td>RECV <?php echo (int)$purchase->receiving_id; ?></td>
+				<td><?php echo H(date(get_date_format().' '.get_time_format(), strtotime($purchase->receiving_time))); ?></td>
+				<td><?php $supplier_name = trim($purchase->company_name ? $purchase->company_name : ($purchase->first_name.' '.$purchase->last_name)); echo H($supplier_name !== '' ? $supplier_name : 'Sin proveedor'); ?></td>
+				<td><?php $purchase_payment_labels = array(); foreach ($purchase->payments as $payment) $purchase_payment_labels[] = $payment->payment_type.' '.to_currency($payment->payment_amount); echo H(implode(' / ', $purchase_payment_labels)); ?></td>
+				<td><strong><?php echo to_currency($purchase->total); ?></strong></td>
+				<td><?php echo anchor('receivings/receipt/'.$purchase->receiving_id, 'Abrir recibo', array('class'=>'btn btn-primary btn-sm', 'target'=>'_blank')); ?></td>
+			</tr>
+			<?php } ?>
+			<?php if (!$route_purchases) { ?><tr><td colspan="6" class="text-center">Esta ruta todavía no tiene compras directas.</td></tr><?php } ?>
+			</tbody>
+		</table>
 	</div>
 </div>
 
