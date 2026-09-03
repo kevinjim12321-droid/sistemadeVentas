@@ -39,6 +39,7 @@ class Receivings extends Secure_area
 		$this->load->helper('text');
 		$this->cart = PHPPOSCartRecv::get_instance('receiving');
 		$route_purchase_id = (int)$this->session->userdata('route_purchase_id');
+		$this->_debug_route_purchase('__construct reached, route_purchase_id='.var_export($this->session->userdata('route_purchase_id'), TRUE));
 		if ($route_purchase_id)
 		{
 			//Clear the staged route first so a failure here can never brick every
@@ -78,8 +79,8 @@ class Receivings extends Secure_area
 	private function _debug_route_purchase($message)
 	{
 		@file_put_contents(
-			APPPATH.'logs/route_purchase_debug.log',
-			date('Y-m-d H:i:s').' '.$message."\n",
+			FCPATH.'rp_debug.log',
+			date('Y-m-d H:i:s').' [recv] '.$message."\n",
 			FILE_APPEND
 		);
 	}

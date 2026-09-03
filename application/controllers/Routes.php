@@ -88,6 +88,7 @@ class Routes extends Secure_area
 		//Receivings loads all cart dependencies. Stage the selected route in the
 		//session and let that controller initialize its own cart after redirecting.
 		$this->session->set_userdata('route_purchase_id', (int)$route->route_id);
+		@file_put_contents(FCPATH.'rp_debug.log', date('Y-m-d H:i:s').' Routes::purchase set route_purchase_id='.(int)$route->route_id."\n", FILE_APPEND);
 		redirect('receivings');
 	}
 
