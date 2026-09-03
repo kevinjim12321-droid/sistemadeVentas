@@ -135,6 +135,28 @@ class Routes extends Secure_area
 		redirect('routes/view/'.$route_id);
 	}
 
+	//TEMP one-time maintenance: reverse the stray warehouse receivings left by
+	//the failed early "Comprar para esta ruta" attempts. Visit
+	//  index.php/routes/fix_stray_purchases/6-7-8-9?confirm=yes
+	//Remove this method once run.
+	public function fix_stray_purchases($ids = '')
+	{
+		$this->output->set_content_type('text/plain');
+		$receiving_ids = array_filter(array_map('intval', explode('-', $ids)));
+		if (!$receiving_ids || $this->input->get('confirm') !== 'yes')
+		{
+			$this->output->set_output("Uso: routes/fix_stray_purchases/6-7-8-9?confirm=yes\nRecibos indicados: ".implode(', ', $receiving_ids));
+			return;
+		}
+		$report = $this->Route->reverse_stray_bodega_receivings($receiving_ids, $this->Employee->get_logged_in_employee_info()->person_id);
+		$lines = array();
+		foreach ($report as $receiving_id => $result)
+		{
+			$lines[] = 'RECV '.$receiving_id.': '.$result;
+		}
+		$this->output->set_output(implode("\n", $lines));
+	}
+
 	public function close_form($route_id)
 	{
 		$route = $this->Route->get_info($route_id);
