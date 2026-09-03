@@ -240,10 +240,7 @@ class Route extends MY_Model
 
 		$fund = $this->get_cash_fund_total($route_id);
 		$cash_sales = (float)$payment_summary['cash'];
-		//Credit collections done on the route arrive in Fase 2 (dedicated
-		//"registrar abono en ruta" action). Kept here so the cuadre layout and
-		//the expected-cash formula are already in place.
-		$credit_collected = 0;
+		$credit_collected = $this->get_credit_collections_total($route_id);
 		$cash_purchases = $this->get_cash_purchases_total($route_id);
 		$expenses = $this->get_expenses_total($route_id);
 
@@ -513,7 +510,36 @@ class Route extends MY_Model
 		$this->db->where('route_id', (int)$route_id);
 		$this->db->where('deleted', 0);
 		$this->db->where('suspended', 0);
+		$this->db->where('store_account_payment', 0);
 		return $this->db->get('sales')->row();
+	}
+
+	//Cash the seller collected on the route against customers' existing debt
+	//(store account payments rung up while in route mode). Only the cash part
+	//counts toward the closing cuadre.
+	public function get_credit_collections($route_id)
+	{
+		if (!$this->db->field_exists('route_id', 'sales')) return array();
+		$sql = 'SELECT s.sale_id, s.sale_time, s.customer_id, '
+			.'p.first_name AS customer_first_name, p.last_name AS customer_last_name, '
+			.'COALESCE(SUM(CASE WHEN sp.payment_type = ? THEN sp.payment_amount ELSE 0 END),0) AS cash_amount '
+			.'FROM '.$this->db->dbprefix('sales').' s '
+			.'LEFT JOIN '.$this->db->dbprefix('people').' p ON p.person_id = s.customer_id '
+			.'LEFT JOIN '.$this->db->dbprefix('sales_payments').' sp ON sp.sale_id = s.sale_id '
+			.'WHERE s.route_id = ? AND s.deleted = 0 AND s.suspended = 0 AND s.store_account_payment = 1 '
+			.'GROUP BY s.sale_id, s.sale_time, s.customer_id, p.first_name, p.last_name '
+			.'ORDER BY s.sale_time DESC, s.sale_id DESC';
+		return $this->db->query($sql, array(lang('common_cash'), (int)$route_id))->result();
+	}
+
+	public function get_credit_collections_total($route_id)
+	{
+		$total = 0;
+		foreach ($this->get_credit_collections($route_id) as $collection)
+		{
+			$total += (float)$collection->cash_amount;
+		}
+		return $total;
 	}
 
 	public function get_sales_history($route_id)
@@ -526,7 +552,7 @@ class Route extends MY_Model
 			.'FROM '.$this->db->dbprefix('sales').' sales '
 			.'LEFT JOIN '.$this->db->dbprefix('people').' customer_people ON customer_people.person_id = sales.customer_id '
 			.'LEFT JOIN '.$this->db->dbprefix('people').' employee_people ON employee_people.person_id = sales.employee_id '
-			.'WHERE sales.route_id = ? AND sales.deleted = 0 AND sales.suspended = 0 '
+			.'WHERE sales.route_id = ? AND sales.deleted = 0 AND sales.suspended = 0 AND sales.store_account_payment = 0 '
 			.'ORDER BY sales.sale_time DESC, sales.sale_id DESC';
 		$sales = $this->db->query($sql, array((int)$route_id))->result();
 		if (!$sales) return array();

@@ -62,3 +62,6 @@ $lang['routes_damage_success'] = 'The broken/loss movement was recorded.';
 $lang['routes_damage_error'] = 'Could not record. Check the lot, quantity and classification.';
 $lang['routes_damage_broken_total'] = 'Broken recorded';
 $lang['routes_damage_loss_total'] = 'Loss (shrinkage) recorded';
+$lang['routes_collections_title'] = 'Debt payments collected on the route';
+$lang['routes_collections_hint'] = 'To collect a payment: in "Sell from this route", use the "Collect customer payment" link in the blue notice, pick the customer and the amount received.';
+$lang['routes_no_collections'] = 'The route has no debt payments collected yet.';

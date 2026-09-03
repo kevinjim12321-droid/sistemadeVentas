@@ -62,3 +62,6 @@ $lang['routes_damage_success'] = 'El movimiento de quebrado/merma quedó registr
 $lang['routes_damage_error'] = 'No se pudo registrar. Verifique el lote, la cantidad y la clasificación.';
 $lang['routes_damage_broken_total'] = 'Quebrado registrado';
 $lang['routes_damage_loss_total'] = 'Merma (pérdida) registrada';
+$lang['routes_collections_title'] = 'Abonos a créditos cobrados en la ruta';
+$lang['routes_collections_hint'] = 'Para cobrar un abono: en "Vender desde esta ruta", usa el enlace "Cobrar abono de cliente" del aviso azul, elige el cliente y el monto recibido.';
+$lang['routes_no_collections'] = 'La ruta todavía no tiene abonos cobrados.';

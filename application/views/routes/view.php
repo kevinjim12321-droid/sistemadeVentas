@@ -137,6 +137,27 @@
 			</tbody>
 		</table>
 		</div>
+
+		<h4 style="margin-top:20px"><?php echo lang('routes_collections_title'); ?></h4>
+		<?php if ($route->status === 'open') { ?>
+		<p class="text-muted"><?php echo lang('routes_collections_hint'); ?></p>
+		<?php } ?>
+		<div class="table-responsive">
+		<table class="table table-striped table-bordered">
+			<thead><tr><th><?php echo lang('common_date'); ?></th><th><?php echo lang('common_customer'); ?></th><th>Recibo</th><th class="text-right"><?php echo lang('common_amount'); ?> (efectivo)</th></tr></thead>
+			<tbody>
+			<?php foreach ($credit_collections as $collection) { ?>
+			<tr>
+				<td><?php echo H(date(get_date_format().' '.get_time_format(), strtotime($collection->sale_time))); ?></td>
+				<td><?php $cn = trim($collection->customer_first_name.' '.$collection->customer_last_name); echo H($cn !== '' ? $cn : '-'); ?></td>
+				<td><?php echo anchor('sales/receipt/'.$collection->sale_id, ($this->config->item('sale_prefix') ? $this->config->item('sale_prefix') : 'POS').' '.$collection->sale_id, array('target'=>'_blank')); ?></td>
+				<td class="text-right"><?php echo to_currency($collection->cash_amount); ?></td>
+			</tr>
+			<?php } ?>
+			<?php if (!$credit_collections) { ?><tr><td colspan="4" class="text-center"><?php echo lang('routes_no_collections'); ?></td></tr><?php } ?>
+			</tbody>
+		</table>
+		</div>
 	</div>
 </div>
 

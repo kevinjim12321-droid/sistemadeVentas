@@ -68,6 +68,7 @@ class Routes extends Secure_area
 		$data['route_expenses'] = $this->Route->get_expenses($route_id);
 		$data['reconciliation'] = $this->Route->get_cash_reconciliation($route_id);
 		$data['damage_summary'] = $this->Route->get_damage_summary($route_id);
+		$data['credit_collections'] = $this->Route->get_credit_collections($route_id);
 		$this->load->view('routes/view', $data);
 	}
 

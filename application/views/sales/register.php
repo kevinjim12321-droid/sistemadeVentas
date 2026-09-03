@@ -1,5 +1,5 @@
 <?php if (!empty($this->cart->route_id)) { ?>
-<div class="alert alert-info" style="margin:10px 15px 0"><strong>Venta de ruta:</strong> <?php echo H($this->cart->route_name); ?>. El producto se descontará del inventario cargado en esta ruta. <span class="pull-right"><?php echo anchor('routes/view/'.$this->cart->route_id, 'Volver a la ruta'); ?> &nbsp;|&nbsp; <?php echo anchor('sales/clear_route', 'Salir de la ruta'); ?></span></div>
+<div class="alert alert-info" style="margin:10px 15px 0"><strong>Venta de ruta:</strong> <?php echo H($this->cart->route_name); ?>. El producto se descontará del inventario cargado en esta ruta. <span class="pull-right"><?php if ($this->cart->get_mode() !== 'store_account_payment') { echo anchor('sales/change_mode/store_account_payment/1', 'Cobrar abono de cliente'); ?> &nbsp;|&nbsp; <?php } echo anchor('routes/view/'.$this->cart->route_id, 'Volver a la ruta'); ?> &nbsp;|&nbsp; <?php echo anchor('sales/clear_route', 'Salir de la ruta'); ?></span></div>
 <?php } ?>
 <script>
 	function amount_tendered_input_changed() 
