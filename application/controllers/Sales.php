@@ -1051,6 +1051,14 @@ class Sales extends Secure_area
 		$this->cart->save();
 	}
 	
+	public function clear_route()
+	{
+		$this->cart->route_id = NULL;
+		$this->cart->route_name = NULL;
+		$this->cart->save();
+		redirect('sales');
+	}
+
 	public function edit_item_variation($line)
 	{
 		$this->cart->was_last_edit_quantity = false;
@@ -2408,9 +2416,18 @@ class Sales extends Secure_area
 		
 		if ($data['sale_id'] != $this->config->item('sale_prefix').' -1')
 		{
+			//Keep the operator inside the same route after a route sale so they can
+			//ring up the next customer without going back to the route screen.
+			$keep_route_id = $this->cart->route_id;
+			$keep_route_name = $this->cart->route_name;
 			$this->cart->destroy();
+			if ($keep_route_id)
+			{
+				$this->cart->route_id = $keep_route_id;
+				$this->cart->route_name = $keep_route_name;
+			}
 			$this->cart->save();
-			$this->Appconfig->save('wizard_create_sale',1);				
+			$this->Appconfig->save('wizard_create_sale',1);
 		}
 		
 		//We need to reset this data because is already gone when saving sale
