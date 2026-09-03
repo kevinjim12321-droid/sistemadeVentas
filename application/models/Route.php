@@ -172,6 +172,91 @@ class Route extends MY_Model
 		return $this->db->get('sales')->row();
 	}
 
+	public function get_sales_history($route_id)
+	{
+		if (!$this->db->field_exists('route_id', 'sales')) return array();
+
+		$sql = 'SELECT sales.sale_id, sales.sale_time, sales.total, sales.customer_id, sales.employee_id, '
+			.'customer_people.first_name AS customer_first_name, customer_people.last_name AS customer_last_name, '
+			.'employee_people.first_name AS employee_first_name, employee_people.last_name AS employee_last_name '
+			.'FROM '.$this->db->dbprefix('sales').' sales '
+			.'LEFT JOIN '.$this->db->dbprefix('people').' customer_people ON customer_people.person_id = sales.customer_id '
+			.'LEFT JOIN '.$this->db->dbprefix('people').' employee_people ON employee_people.person_id = sales.employee_id '
+			.'WHERE sales.route_id = ? AND sales.deleted = 0 AND sales.suspended = 0 '
+			.'ORDER BY sales.sale_time DESC, sales.sale_id DESC';
+		$sales = $this->db->query($sql, array((int)$route_id))->result();
+		if (!$sales) return array();
+
+		$sale_ids = array_map(function($sale) { return (int)$sale->sale_id; }, $sales);
+		$this->db->select('sale_id, payment_type, payment_amount');
+		$this->db->where_in('sale_id', $sale_ids);
+		$payment_rows = $this->db->get('sales_payments')->result();
+		$payments = array();
+		foreach ($payment_rows as $payment)
+		{
+			if (!isset($payments[$payment->sale_id])) $payments[$payment->sale_id] = array();
+			$payments[$payment->sale_id][] = $payment;
+		}
+
+		$invoice_ids = array();
+		if ($this->db->table_exists('customer_invoice_details'))
+		{
+			$this->db->select('sale_id, invoice_id');
+			$this->db->where_in('sale_id', $sale_ids);
+			foreach ($this->db->get('customer_invoice_details')->result() as $invoice_detail)
+			{
+				$invoice_ids[(int)$invoice_detail->sale_id] = (int)$invoice_detail->invoice_id;
+			}
+		}
+
+		$paid_credit = array();
+		if ($this->db->table_exists('store_accounts_paid_sales'))
+		{
+			$this->db->select('sale_id, SUM(partial_payment_amount) AS paid_amount', FALSE);
+			$this->db->where_in('sale_id', $sale_ids);
+			$this->db->group_by('sale_id');
+			foreach ($this->db->get('store_accounts_paid_sales')->result() as $paid)
+			{
+				$paid_credit[(int)$paid->sale_id] = (float)$paid->paid_amount;
+			}
+		}
+
+		foreach ($sales as $sale)
+		{
+			$sale->invoice_id = isset($invoice_ids[(int)$sale->sale_id]) ? $invoice_ids[(int)$sale->sale_id] : NULL;
+			$sale->payments = isset($payments[$sale->sale_id]) ? $payments[$sale->sale_id] : array();
+			$sale->credit_amount = 0;
+			$sale->cash_amount = 0;
+			foreach ($sale->payments as $payment)
+			{
+				if ($payment->payment_type === lang('common_store_account')) $sale->credit_amount += (float)$payment->payment_amount;
+				if ($payment->payment_type === lang('common_cash')) $sale->cash_amount += min((float)$payment->payment_amount, (float)$sale->total);
+			}
+			$sale->credit_paid = isset($paid_credit[(int)$sale->sale_id]) ? $paid_credit[(int)$sale->sale_id] : 0;
+			$sale->credit_pending = max(0, $sale->credit_amount - $sale->credit_paid);
+		}
+		return $sales;
+	}
+
+	public function get_route_payment_summary($sales)
+	{
+		$summary = array('cash'=>0, 'credit'=>0, 'credit_pending'=>0, 'other'=>0);
+		foreach ($sales as $sale)
+		{
+			$summary['cash'] += $sale->cash_amount;
+			$summary['credit'] += $sale->credit_amount;
+			$summary['credit_pending'] += $sale->credit_pending;
+			foreach ($sale->payments as $payment)
+			{
+				if ($payment->payment_type !== lang('common_cash') && $payment->payment_type !== lang('common_store_account'))
+				{
+					$summary['other'] += (float)$payment->payment_amount;
+				}
+			}
+		}
+		return $summary;
+	}
+
 	public function get_all_for_location($location_id)
 	{
 		$this->db->select('route_runs.*, people.first_name, people.last_name');

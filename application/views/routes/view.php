@@ -12,6 +12,43 @@
 	</div>
 </div>
 
+<div class="panel panel-piluku">
+	<div class="panel-heading"><h3 class="panel-title">Historial de ventas de la ruta</h3></div>
+	<div class="panel-body">
+		<div class="row" style="margin-bottom:15px">
+			<div class="col-sm-3"><strong>Total vendido</strong><br><?php echo to_currency($sales_summary->total); ?></div>
+			<div class="col-sm-3"><strong>Efectivo</strong><br><?php echo to_currency($payment_summary['cash']); ?></div>
+			<div class="col-sm-3"><strong>Crédito otorgado</strong><br><?php echo to_currency($payment_summary['credit']); ?></div>
+			<div class="col-sm-3"><strong>Crédito pendiente</strong><br><?php echo to_currency($payment_summary['credit_pending']); ?></div>
+		</div>
+		<div class="table-responsive">
+		<table class="table table-striped table-bordered">
+			<thead><tr><th>Recibo</th><th>Fecha y hora</th><th>Cliente</th><th>Vendedor</th><th>Forma de pago</th><th>Total</th><th>Saldo pendiente</th><th>Acciones</th></tr></thead>
+			<tbody>
+			<?php foreach ($route_sales as $sale) { ?>
+			<tr>
+				<td><?php echo H(($this->config->item('sale_prefix') ? $this->config->item('sale_prefix') : 'POS').' '.$sale->sale_id); ?></td>
+				<td><?php echo H(date(get_date_format().' '.get_time_format(), strtotime($sale->sale_time))); ?></td>
+				<td><?php $customer_name = trim($sale->customer_first_name.' '.$sale->customer_last_name); echo H($customer_name !== '' ? $customer_name : 'Consumidor final'); ?></td>
+				<td><?php echo H(trim($sale->employee_first_name.' '.$sale->employee_last_name)); ?></td>
+				<td><?php $payment_labels = array(); foreach ($sale->payments as $payment) $payment_labels[] = $payment->payment_type.' '.to_currency($payment->payment_amount); echo H(implode(' / ', $payment_labels)); ?></td>
+				<td><strong><?php echo to_currency($sale->total); ?></strong></td>
+				<td><?php echo $sale->credit_pending > 0 ? '<span class="text-danger"><strong>'.to_currency($sale->credit_pending).'</strong></span>' : to_currency(0); ?></td>
+				<td>
+					<?php echo anchor('sales/receipt/'.$sale->sale_id, 'Abrir recibo', array('class'=>'btn btn-primary btn-sm', 'target'=>'_blank')); ?>
+					<?php if ($sale->invoice_id) { echo anchor('invoices/show/customer/'.$sale->invoice_id, 'Abrir factura', array('class'=>'btn btn-success btn-sm', 'target'=>'_blank')); } ?>
+					<?php if ($sale->customer_id) { echo anchor('customers/view/'.$sale->customer_id, 'Ver cliente/deuda', array('class'=>'btn btn-default btn-sm', 'target'=>'_blank')); } ?>
+				</td>
+			</tr>
+			<?php } ?>
+			<?php if (!$route_sales) { ?><tr><td colspan="8" class="text-center">Esta ruta todavía no tiene ventas registradas.</td></tr><?php } ?>
+			</tbody>
+		</table>
+		</div>
+		<p class="text-muted">Los recibos de ruta utilizan el mismo historial de ventas, clientes y línea de crédito del sistema principal.</p>
+	</div>
+</div>
+
 <?php if ($route->status === 'open') { ?>
 <div class="panel panel-piluku">
 	<div class="panel-heading"><h3 class="panel-title"><?php echo lang('routes_load_inventory'); ?></h3></div>

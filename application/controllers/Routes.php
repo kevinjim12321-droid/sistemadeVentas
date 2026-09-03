@@ -56,6 +56,8 @@ class Routes extends Secure_area
 		$data['route_inventory'] = $this->Route->get_inventory($route_id);
 		$data['warehouse_lots'] = $route->status === 'open' ? $this->Route->get_available_warehouse_lots($route->location_id) : array();
 		$data['sales_summary'] = $this->Route->get_sales_summary($route_id);
+		$data['route_sales'] = $this->Route->get_sales_history($route_id);
+		$data['payment_summary'] = $this->Route->get_route_payment_summary($data['route_sales']);
 		$this->load->view('routes/view', $data);
 	}
 
