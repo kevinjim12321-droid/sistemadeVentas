@@ -92,6 +92,14 @@ class Routes extends Secure_area
 		redirect('receivings');
 	}
 
+	//TEMP: dumps the route purchase diagnostics log. Remove once resolved.
+	public function debug_purchase()
+	{
+		$this->output->set_content_type('text/plain');
+		$file = FCPATH.'rp_debug.log';
+		$this->output->set_output(is_file($file) ? file_get_contents($file) : 'rp_debug.log does not exist yet');
+	}
+
 	public function load_lot($route_id)
 	{
 		$route = $this->Route->get_info($route_id);
