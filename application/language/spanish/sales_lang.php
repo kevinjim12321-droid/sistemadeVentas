@@ -401,4 +401,12 @@ $lang['sales_ask_search_in_ig_catalog'] = '¿Quieres continuar con la búsqueda 
 $lang['sales_no_result_found_ig'] = 'No se han encontrado resultados en el catálogo de Gadgets lesionados.';
 $lang['sales_ask_search_in_other_vendors'] = '¿Quiere continuar la búsqueda en otros vendedores?';
 $lang['sales_no_result_found_wgp'] = 'No se han encontrado resultados en el catálogo de WGP.';
+
+$lang['sales_route_blocked_title'] = 'Esta venta quedó bloqueada: la ruta de esta venta ya no es válida.';
+$lang['sales_route_blocked_hint'] = 'No se puede completar el cobro. Revise el carrito y cancele la venta para empezar una nueva.';
+$lang['sales_route_blocked_reason_missing'] = 'La ruta ya no existe.';
+$lang['sales_route_blocked_reason_closed'] = 'La ruta se cerró.';
+$lang['sales_route_blocked_reason_wrong_employee'] = 'La ruta ya no pertenece a este vendedor.';
+$lang['sales_route_blocked_reason_wrong_location'] = 'La ruta pertenece a otra sucursal.';
+$lang['sales_route_clear_blocked'] = 'No se puede salir de la ruta con productos en el carrito. Cancele la venta para empezar una nueva.';
 ?>

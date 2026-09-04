@@ -412,4 +412,12 @@ $lang['sales_ask_search_in_ig_catalog'] = 'Do you want to continue search in Inj
 $lang['sales_no_result_found_ig'] = 'No results found in Injured Gadgets catalog.';
 $lang['sales_ask_search_in_other_vendors'] = 'Do you want to contine search in other venders?';
 $lang['sales_no_result_found_wgp'] = 'No results found in WGP catalog.';
+
+$lang['sales_route_blocked_title'] = 'This sale is blocked: the route it started under is no longer valid.';
+$lang['sales_route_blocked_hint'] = 'The sale cannot be completed. Review the cart and cancel the sale to start a new one.';
+$lang['sales_route_blocked_reason_missing'] = 'The route no longer exists.';
+$lang['sales_route_blocked_reason_closed'] = 'The route was closed.';
+$lang['sales_route_blocked_reason_wrong_employee'] = 'The route no longer belongs to this salesperson.';
+$lang['sales_route_blocked_reason_wrong_location'] = 'The route belongs to a different location.';
+$lang['sales_route_clear_blocked'] = 'You cannot leave route mode with products in the cart. Cancel the sale to start a new one.';
 ?>

@@ -11,7 +11,14 @@ class Sales extends Secure_area
 	
 	public $cart;
 	public $view_data = array();
-	
+
+	//Set by _sync_route_context() on every request. TRUE means the cart has
+	//items that were added under a route context that is no longer valid
+	//(closed, reassigned, or a different location) -- complete() refuses to
+	//finish the sale while this is true, and the register view shows why.
+	public $route_blocked = FALSE;
+	public $route_blocked_reason = NULL;
+
 	function __construct()
 	{
 		parent::__construct('sales');
@@ -57,9 +64,97 @@ class Sales extends Secure_area
 		
 		$this->cart = PHPPOSCartSale::get_instance('sale');
 		cache_item_and_item_kit_cart_info($this->cart->get_items());
-	}	
-	
-	
+		$this->_sync_route_context();
+	}
+
+	/**
+	 * The database is the source of truth for route sale context, re-derived
+	 * on every request -- never just trusted from whatever is sitting in the
+	 * session.
+	 *
+	 *  - Empty cart: safe to (re)compute freely. If the current employee has
+	 *    exactly one open route at their current location, attach it; if not,
+	 *    make sure the cart is a normal sale. (Route::get_open_route_for_
+	 *    employee() can only ever return one row -- Rutas Fase 1 blocks an
+	 *    employee from having two routes open at once.)
+	 *  - Cart already has items: route_id is NEVER changed automatically. The
+	 *    inventory context a sale started under stays fixed until it is
+	 *    completed or cancelled. We only check whether that context is still
+	 *    valid, so the register can warn and complete() can refuse to finish
+	 *    the sale instead of silently falling back to normal inventory.
+	 */
+	private function _sync_route_context()
+	{
+		$this->route_blocked = FALSE;
+		$this->route_blocked_reason = NULL;
+
+		$employee_id = $this->Employee->get_logged_in_employee_info()->person_id;
+		$location_id = $this->Employee->get_logged_in_employee_current_location_id();
+		$has_items = count($this->cart->get_items()) > 0;
+
+		if (!$has_items)
+		{
+			$route = $this->Route->get_open_route_for_employee($employee_id, $location_id);
+			$target_route_id = $route ? (int)$route->route_id : NULL;
+
+			if ((int)$this->cart->route_id !== (int)$target_route_id)
+			{
+				$this->cart->route_id = $target_route_id;
+				$this->cart->route_name = $route ? $route->name : NULL;
+				$this->cart->save();
+			}
+			return;
+		}
+
+		if (!empty($this->cart->route_id))
+		{
+			$route = $this->_validate_route_context($this->cart->route_id, $employee_id, $location_id);
+			if (!$route)
+			{
+				$this->route_blocked = TRUE;
+				$this->route_blocked_reason = $this->_route_invalid_reason($this->cart->route_id, $employee_id, $location_id);
+			}
+		}
+	}
+
+	/**
+	 * Returns the route row when it is fully valid for this employee at this
+	 * location right now (exists, open, same assigned employee, same
+	 * location); FALSE otherwise. Single place both _sync_route_context()
+	 * and complete() use so the two checks can never drift apart.
+	 */
+	private function _validate_route_context($route_id, $employee_id, $location_id)
+	{
+		if (empty($route_id))
+		{
+			return FALSE;
+		}
+		$route = $this->Route->get_info($route_id);
+		if (!$route || $route->status !== 'open' || (int)$route->employee_id !== (int)$employee_id || (int)$route->location_id !== (int)$location_id)
+		{
+			return FALSE;
+		}
+		return $route;
+	}
+
+	private function _route_invalid_reason($route_id, $employee_id, $location_id)
+	{
+		$route = $this->Route->get_info($route_id);
+		if (!$route)
+		{
+			return lang('sales_route_blocked_reason_missing');
+		}
+		if ($route->status !== 'open')
+		{
+			return lang('sales_route_blocked_reason_closed');
+		}
+		if ((int)$route->employee_id !== (int)$employee_id)
+		{
+			return lang('sales_route_blocked_reason_wrong_employee');
+		}
+		return lang('sales_route_blocked_reason_wrong_location');
+	}
+
 	function index($dont_switch_employee = 0)
 	{	
 		if (count($this->cart->get_items()) > 0)
@@ -1053,6 +1148,17 @@ class Sales extends Secure_area
 	
 	public function clear_route()
 	{
+		//Refuse on a cart that already has items: silently stripping route_id
+		//would turn already route-priced/route-reserved items into what looks
+		//like a normal sale, which would then discount normal location stock
+		//for them -- exactly the fallback rule 7 forbids. Only safe to clear
+		//when there is nothing to protect. To leave route mode with items in
+		//progress, cancel the sale (existing "Cancelar venta" button) instead.
+		if (count($this->cart->get_items()) > 0)
+		{
+			$this->_reload(array('error' => lang('sales_route_clear_blocked')), false);
+			return;
+		}
 		$this->cart->route_id = NULL;
 		$this->cart->route_name = NULL;
 		$this->cart->save();
@@ -2022,13 +2128,20 @@ class Sales extends Secure_area
 		
 		if (!empty($this->cart->route_id))
 		{
-			$route = $this->Route->get_info($this->cart->route_id);
-			$required = array();
-			if (!$route || $route->status !== 'open' || (int)$route->location_id !== (int)$this->Employee->get_logged_in_employee_current_location_id())
+			//Always re-validated against the database at the moment of
+			//charging: route exists, is open, belongs to whoever is checking
+			//out, and to their current location. Never trust whatever route
+			//context the cart happened to carry into this request -- and
+			//never fall back to completing this as a normal sale if it fails.
+			$employee_id = $this->Employee->get_logged_in_employee_info()->person_id;
+			$location_id = $this->Employee->get_logged_in_employee_current_location_id();
+			$route = $this->_validate_route_context($this->cart->route_id, $employee_id, $location_id);
+			if (!$route)
 			{
-				$this->_reload(array('error' => 'La ruta seleccionada ya no está abierta o no pertenece a esta ubicación.'), false);
+				$this->_reload(array('error' => lang('sales_route_blocked_title').' '.$this->_route_invalid_reason($this->cart->route_id, $employee_id, $location_id).' '.lang('sales_route_blocked_hint')), false);
 				return;
 			}
+			$required = array();
 			foreach ($this->cart->get_items() as $item)
 			{
 				if (!($item instanceof PHPPOSCartItemSale))
