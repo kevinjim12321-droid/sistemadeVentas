@@ -485,6 +485,12 @@ if (is_on_demo_host()) { ?>
 						<span class="text">Rutas</span>
 					</a>
 				</li>
+				<li class="catalog">
+					<a tabindex="-1" href="<?php echo site_url('catalog'); ?>" target="_blank" class="waves-effect waves-light">
+						<i class="icon ti-shopping-cart"></i>
+						<span class="text">Catálogo</span>
+					</a>
+				</li>
 				<?php } ?>
 				<?php
 				if ($this->config->item('timeclock')) 
