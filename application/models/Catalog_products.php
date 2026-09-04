@@ -27,7 +27,9 @@ class Catalog_products extends MY_Model
 
 	public function get_categories()
 	{
-		$this->db->select('categories.id, categories.name, COUNT(items.item_id) AS item_count', FALSE);
+		$items_table = $this->db->dbprefix('items');
+		$this->db->select('categories.id, categories.name');
+		$this->db->select('COUNT('.$items_table.'.item_id) AS item_count', FALSE);
 		$this->db->from('categories');
 		$this->db->join('items', 'items.category_id = categories.id AND items.deleted = 0 AND items.is_service = 0 AND items.show_in_catalog = 1', 'inner');
 		$this->db->where('categories.deleted', 0);
@@ -67,7 +69,9 @@ class Catalog_products extends MY_Model
 	{
 		$location_id = $this->get_default_location_id();
 
-		$this->db->select('items.item_id, items.name, items.description, items.item_number, items.unit_price, items.main_image_id, items.cost_price, categories.name AS category_name, categories.id AS category_id, COALESCE(location_items.quantity, 0) AS quantity');
+		$location_items_table = $this->db->dbprefix('location_items');
+		$this->db->select('items.item_id, items.name, items.description, items.item_number, items.unit_price, items.main_image_id, items.cost_price, categories.name AS category_name, categories.id AS category_id');
+		$this->db->select('COALESCE('.$location_items_table.'.quantity, 0) AS quantity', FALSE);
 		$this->db->from('items');
 		$this->db->join('categories', 'categories.id = items.category_id', 'left');
 		$this->db->join('location_items', 'location_items.item_id = items.item_id AND location_items.location_id = '.(int)$location_id, 'left');
@@ -81,7 +85,9 @@ class Catalog_products extends MY_Model
 	{
 		$location_id = $this->get_default_location_id();
 
-		$this->db->select('items.*, categories.name AS category_name, COALESCE(location_items.quantity, 0) AS quantity');
+		$location_items_table = $this->db->dbprefix('location_items');
+		$this->db->select('items.*, categories.name AS category_name');
+		$this->db->select('COALESCE('.$location_items_table.'.quantity, 0) AS quantity', FALSE);
 		$this->db->from('items');
 		$this->db->join('categories', 'categories.id = items.category_id', 'left');
 		$this->db->join('location_items', 'location_items.item_id = items.item_id AND location_items.location_id = '.(int)$location_id, 'left');
