@@ -3,6 +3,10 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Route extends MY_Model
 {
+	//Set by create() when it returns FALSE, so the controller can show a
+	//specific message: 'employee_required' | 'employee_has_open_route' | 'db_error'.
+	public $last_error = NULL;
+
 	public function __construct()
 	{
 		parent::__construct();
@@ -95,6 +99,13 @@ class Route extends MY_Model
 			$this->db->query('ALTER TABLE `'.$lots.'`'
 				." ADD `quantity_broken` decimal(23,10) NOT NULL DEFAULT '0.0000000000',"
 				." ADD `quantity_loss` decimal(23,10) NOT NULL DEFAULT '0.0000000000'");
+		}
+
+		//Supports the "one open route per employee" lock in create() and the
+		//get_open_route_for_employee() lookup. Additive, reversible (DROP INDEX).
+		if (!$this->db->query("SHOW INDEX FROM `{$runs}` WHERE Key_name = 'route_employee_status'")->num_rows())
+		{
+			$this->db->query("ALTER TABLE `{$runs}` ADD KEY `route_employee_status` (`employee_id`,`status`)");
 		}
 
 		//Cash reconciliation (Fase 1): closing cuadre stored on the run itself.
@@ -752,14 +763,60 @@ class Route extends MY_Model
 		return $this->db->get()->row();
 	}
 
+	/**
+	 * The one open route (if any) assigned to this employee. Pass $location_id
+	 * to scope it to a single location (used by the automatic route-sale
+	 * detection in Sales); omit it to check across every location (used by
+	 * create() to enforce "one open route per employee").
+	 */
+	public function get_open_route_for_employee($employee_id, $location_id = NULL)
+	{
+		$this->db->select('route_runs.*, people.first_name, people.last_name');
+		$this->db->from('route_runs');
+		$this->db->join('people', 'people.person_id = route_runs.employee_id', 'left');
+		$this->db->where('route_runs.employee_id', (int)$employee_id);
+		$this->db->where('route_runs.status', 'open');
+		if ($location_id !== NULL)
+		{
+			$this->db->where('route_runs.location_id', (int)$location_id);
+		}
+		$this->db->order_by('route_runs.route_id', 'desc');
+		$this->db->limit(1);
+		return $this->db->get()->row();
+	}
+
 	public function create($data)
 	{
+		$this->last_error = NULL;
+
+		$employee_id = !empty($data['employee_id']) ? (int)$data['employee_id'] : NULL;
+		if (!$employee_id)
+		{
+			$this->last_error = 'employee_required';
+			return FALSE;
+		}
+
+		$this->db->trans_begin();
+
+		//Lock any existing open route rows for this employee so two concurrent
+		//"open route" requests for the same person can't both succeed.
+		$existing = $this->db->query(
+			'SELECT route_id FROM '.$this->db->dbprefix('route_runs')." WHERE employee_id = ? AND status = 'open' FOR UPDATE",
+			array($employee_id)
+		)->row();
+		if ($existing)
+		{
+			$this->db->trans_rollback();
+			$this->last_error = 'employee_has_open_route';
+			return FALSE;
+		}
+
 		$now = date('Y-m-d H:i:s');
 		$insert = array(
 			'name' => trim($data['name']),
 			'route_date' => $data['route_date'],
 			'location_id' => (int)$data['location_id'],
-			'employee_id' => !empty($data['employee_id']) ? (int)$data['employee_id'] : NULL,
+			'employee_id' => $employee_id,
 			'status' => 'open',
 			'notes' => isset($data['notes']) ? trim($data['notes']) : NULL,
 			'opened_by' => !empty($data['opened_by']) ? (int)$data['opened_by'] : NULL,
@@ -767,7 +824,17 @@ class Route extends MY_Model
 			'created_at' => $now,
 			'updated_at' => $now,
 		);
-		return $this->db->insert('route_runs', $insert) ? $this->db->insert_id() : FALSE;
+		$this->db->insert('route_runs', $insert);
+		$route_id = $this->db->insert_id();
+
+		if (!$route_id || $this->db->trans_status() === FALSE)
+		{
+			$this->db->trans_rollback();
+			$this->last_error = 'db_error';
+			return FALSE;
+		}
+		$this->db->trans_commit();
+		return $route_id;
 	}
 
 	public function get_available_warehouse_lots($location_id)
