@@ -36,6 +36,14 @@
 	.pagination a, .pagination span { padding:8px 12px; border-radius:6px; background:#fff; border:1px solid #ddd; font-size:13px; text-decoration:none; }
 	.pagination .current { background:#2f80ed; border-color:#2f80ed; color:#fff; }
 	.empty { max-width:1100px; margin:60px auto; padding:0 16px; text-align:center; color:#888; }
+	.cart-link { background:#fff; color:#2f80ed; border-radius:20px; padding:6px 14px; font-size:13px; font-weight:600; text-decoration:none; }
+	.flash { max-width:1100px; margin:12px auto 0; padding:0 16px; }
+	.flash-box { background:#e6f7ee; color:#1a7a44; border-radius:8px; padding:10px 14px; font-size:13px; }
+	.flash-box.error { background:#fdecec; color:#b02a2a; }
+	.add-form { display:flex; gap:6px; margin-top:6px; }
+	.add-form input[type=number] { width:56px; padding:6px; border:1px solid #ddd; border-radius:6px; font-size:13px; }
+	.add-form button { flex:1; padding:6px 8px; border:none; border-radius:6px; background:#2f80ed; color:#fff; font-size:12px; cursor:pointer; }
+	.add-form button[disabled] { background:#ccc; cursor:not-allowed; }
 </style>
 </head>
 <body>
@@ -43,11 +51,21 @@
 <div class="topbar">
 	<div class="topbar-inner">
 		<h1><?php echo H($location ? $location->name : 'Catálogo'); ?></h1>
-		<?php if ($is_staff) { ?>
-		<span class="staff-badge">Vista interna (costo y existencia exacta)<?php echo anchor('home', 'Volver al panel'); ?></span>
-		<?php } ?>
+		<div style="display:flex; align-items:center; gap:10px;">
+			<?php if ($is_staff) { ?>
+			<span class="staff-badge">Vista interna (costo y existencia exacta)<?php echo anchor('home', 'Volver al panel'); ?></span>
+			<?php } ?>
+			<?php echo anchor('catalog/cart', '🛒 Pedido ('.(int)$cart_count.')', array('class' => 'cart-link')); ?>
+		</div>
 	</div>
 </div>
+
+<?php if ($this->session->flashdata('catalog_success')) { ?>
+<div class="flash"><div class="flash-box"><?php echo $this->session->flashdata('catalog_success'); ?></div></div>
+<?php } ?>
+<?php if ($this->session->flashdata('catalog_error')) { ?>
+<div class="flash"><div class="flash-box error"><?php echo H($this->session->flashdata('catalog_error')); ?></div></div>
+<?php } ?>
 
 <div class="search-wrap">
 	<form class="search-form" method="get" action="<?php echo site_url('catalog'); ?>">
@@ -87,6 +105,11 @@
 				<?php if ($item->item_number) { ?> · Cód. <?php echo H($item->item_number); ?><?php } ?>
 			</div>
 			<?php if ($is_staff) { ?><div class="card-meta">Costo: <?php echo to_currency($item->cost_price); ?></div><?php } ?>
+			<?php echo form_open('catalog/add_to_cart/'.(int)$item->item_id, array('class' => 'add-form')); ?>
+				<input type="hidden" name="redirect_qs" value="<?php echo H($query_string); ?>">
+				<input type="number" name="quantity" value="1" min="1" step="1" <?php echo (float)$item->quantity <= 0 ? 'disabled' : ''; ?>>
+				<button type="submit" <?php echo (float)$item->quantity <= 0 ? 'disabled' : ''; ?>>Agregar</button>
+			<?php echo form_close(); ?>
 		</div>
 	</div>
 	<?php } ?>

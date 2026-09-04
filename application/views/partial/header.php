@@ -492,6 +492,14 @@ if (is_on_demo_host()) { ?>
 					</a>
 				</li>
 				<?php } ?>
+				<?php if ($this->Employee->has_module_permission('sales', $this->Employee->get_logged_in_employee_info()->person_id)) { ?>
+				<li <?php echo $this->uri->segment(1) == 'catalog_orders' ? 'class="active"' : ''; ?>>
+					<a tabindex="-1" href="<?php echo site_url('catalog_orders'); ?>" class="waves-effect waves-light">
+						<i class="icon ti-receipt"></i>
+						<span class="text">Pedidos del catálogo</span>
+					</a>
+				</li>
+				<?php } ?>
 				<?php
 				if ($this->config->item('timeclock')) 
 				{
