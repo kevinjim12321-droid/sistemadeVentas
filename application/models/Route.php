@@ -101,12 +101,13 @@ class Route extends MY_Model
 				." ADD `quantity_loss` decimal(23,10) NOT NULL DEFAULT '0.0000000000'");
 		}
 
-		//Supports the "one open route per employee" lock in create() and the
-		//get_open_route_for_employee() lookup. Additive, reversible (DROP INDEX).
-		if (!$this->db->query("SHOW INDEX FROM `{$runs}` WHERE Key_name = 'route_employee_status'")->num_rows())
-		{
-			$this->db->query("ALTER TABLE `{$runs}` ADD KEY `route_employee_status` (`employee_id`,`status`)");
-		}
+		//NOTE: the route_employee_status (employee_id, status) index used by
+		//create()'s locked duplicate-open-route check is NOT created here on
+		//purpose -- it ships as an independent SQL migration instead
+		//(database/migrations/2026-09-04_route_employee_status_index.sql), not
+		//as runtime DDL. create() works correctly without it (InnoDB still
+		//locks correctly via SELECT ... FOR UPDATE), just less efficiently on
+		//a large route_runs table -- the index is a performance addition.
 
 		//Cash reconciliation (Fase 1): closing cuadre stored on the run itself.
 		if (!$this->db->field_exists('counted_cash', 'route_runs'))
