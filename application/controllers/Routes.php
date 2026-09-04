@@ -15,7 +15,7 @@ class Routes extends Secure_area
 	{
 		$location_id = $this->Employee->get_logged_in_employee_current_location_id();
 		$data['routes'] = $this->Route->get_all_for_location($location_id);
-		$data['employees'] = $this->Employee->get_all(0, 10000, 0, 'last_name', 'asc')->result();
+		$data['employees'] = $this->Employee->get_employees_for_location($location_id);
 
 		$start = $this->input->get('start_date');
 		$end = $this->input->get('end_date');
@@ -30,23 +30,49 @@ class Routes extends Secure_area
 	{
 		$name = trim((string)$this->input->post('name'));
 		$route_date = $this->input->post('route_date');
+		$employee_id = (int)$this->input->post('employee_id');
+		$location_id = $this->Employee->get_logged_in_employee_current_location_id();
+
 		if ($name === '' || !$route_date)
 		{
 			$this->session->set_flashdata('route_error', lang('routes_required_fields'));
 			redirect('routes');
 		}
 
+		//Vendedor obligatorio: reject before touching the model if nothing was
+		//selected, so the message names the real reason instead of a generic
+		//"required fields" error.
+		if (!$employee_id)
+		{
+			$this->session->set_flashdata('route_error', lang('routes_employee_required'));
+			redirect('routes');
+		}
+
+		//A route can only be assigned to an employee authorized for the
+		//location it is being opened in. Reuses the existing
+		//employees_locations relationship via Employee::is_employee_authenticated() --
+		//no new table, no duplicated permission logic.
+		if (!$this->Employee->is_employee_authenticated($employee_id, $location_id))
+		{
+			$this->session->set_flashdata('route_error', lang('routes_employee_no_location_access'));
+			redirect('routes');
+		}
+
 		$route_id = $this->Route->create(array(
 			'name' => $name,
 			'route_date' => $route_date,
-			'location_id' => $this->Employee->get_logged_in_employee_current_location_id(),
-			'employee_id' => (int)$this->input->post('employee_id'),
+			'location_id' => $location_id,
+			'employee_id' => $employee_id,
 			'notes' => $this->input->post('notes'),
 			'opened_by' => $this->Employee->get_logged_in_employee_info()->person_id,
 		));
 		if (!$route_id)
 		{
-			$this->session->set_flashdata('route_error', lang('routes_create_error'));
+			$messages = array(
+				'employee_required' => lang('routes_employee_required'),
+				'employee_has_open_route' => lang('routes_employee_has_open_route'),
+			);
+			$this->session->set_flashdata('route_error', isset($messages[$this->Route->last_error]) ? $messages[$this->Route->last_error] : lang('routes_create_error'));
 			redirect('routes');
 		}
 		$opening_cash = (float)$this->input->post('opening_cash');
@@ -151,10 +177,39 @@ class Routes extends Secure_area
 	public function sell($route_id)
 	{
 		$route = $this->Route->get_info($route_id);
-		if (!$route || $route->status !== 'open' || (int)$route->location_id !== (int)$this->Employee->get_logged_in_employee_current_location_id())
+		if (!$route)
 		{
 			show_404();
 		}
+
+		$employee_id = $this->Employee->get_logged_in_employee_info()->person_id;
+		$location_id = $this->Employee->get_logged_in_employee_current_location_id();
+
+		//Each check gets its own specific message instead of a blanket 404,
+		//so the operator understands exactly why they can't sell from it.
+		if ($route->status !== 'open')
+		{
+			$this->session->set_flashdata('route_error', lang('routes_sell_not_open'));
+			redirect('routes/view/'.$route_id);
+		}
+		if ((int)$route->location_id !== (int)$location_id)
+		{
+			//Wrong location: route belongs to a different branch than the one
+			//the employee is currently in -- send them to their own route list.
+			$this->session->set_flashdata('route_error', lang('routes_sell_wrong_location'));
+			redirect('routes');
+		}
+		if (!$route->employee_id)
+		{
+			$this->session->set_flashdata('route_error', lang('routes_sell_no_employee'));
+			redirect('routes/view/'.$route_id);
+		}
+		if ((int)$route->employee_id !== (int)$employee_id)
+		{
+			$this->session->set_flashdata('route_error', lang('routes_sell_wrong_employee'));
+			redirect('routes/view/'.$route_id);
+		}
+
 		require_once (APPPATH.'models/cart/PHPPOSCartSale.php');
 		$cart = PHPPOSCartSale::get_instance('sale');
 		$cart->destroy();
@@ -226,6 +281,25 @@ class Routes extends Secure_area
 			$this->input->post('counted_cash'),
 			(string)$this->input->post('cash_note')
 		);
+
+		if ($result)
+		{
+			//If the employee closing the route also has it tagged on their own
+			//(still-empty) sale cart, drop the tag now instead of leaving a
+			//stale "Venta de ruta" banner around. Never touch a cart that
+			//already has items -- Sales.php re-validates against the database
+			//on every load and blocks checkout if the route is no longer open
+			//(Fase 3 adds the clearer "blocked, please cancel" UX for that case).
+			require_once (APPPATH.'models/cart/PHPPOSCartSale.php');
+			$cart = PHPPOSCartSale::get_instance('sale');
+			if ((int)$cart->route_id === (int)$route_id && count($cart->get_items()) === 0)
+			{
+				$cart->route_id = NULL;
+				$cart->route_name = NULL;
+				$cart->save();
+			}
+		}
+
 		$this->session->set_flashdata($result ? 'route_success' : 'route_error', $result ? lang('routes_close_success') : lang('routes_close_error'));
 		redirect('routes/view/'.$route_id);
 	}

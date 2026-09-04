@@ -16,8 +16,8 @@
 			</div>
 			<div class="form-group">
 				<?php echo form_label(lang('routes_seller').':', 'employee_id', array('class'=>'col-sm-3 control-label')); ?>
-				<div class="col-sm-9"><select class="form-control" name="employee_id" id="employee_id">
-					<option value=""><?php echo lang('common_none'); ?></option>
+				<div class="col-sm-9"><select class="form-control" name="employee_id" id="employee_id" required>
+					<option value=""><?php echo lang('routes_select_seller'); ?></option>
 					<?php foreach ($employees as $employee) { ?><option value="<?php echo (int)$employee->person_id; ?>"><?php echo H($employee->first_name.' '.$employee->last_name); ?></option><?php } ?>
 				</select></div>
 			</div>

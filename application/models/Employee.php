@@ -1295,9 +1295,29 @@ class Employee extends Person
 				$authed_employees[$employee['employee_id']] = TRUE;
 			}	
 		}
-		return isset($authed_employees[$employee_id]) && $authed_employees[$employee_id]; 
+		return isset($authed_employees[$employee_id]) && $authed_employees[$employee_id];
 	}
-	
+
+	/**
+	 * Simple list of active employees authorized for a location, reusing the
+	 * existing employees_locations relationship (no new table/logic). Meant
+	 * for small selectors (e.g. the Rutas "Vendedor responsable" dropdown) --
+	 * intentionally lighter than Employee::search(), which is built for the
+	 * employee search grid and returns far more than a dropdown needs.
+	 */
+	function get_employees_for_location($location_id)
+	{
+		$this->db->select('employees.person_id, people.first_name, people.last_name');
+		$this->db->from('employees_locations');
+		$this->db->join('employees', 'employees.person_id = employees_locations.employee_id');
+		$this->db->join('people', 'people.person_id = employees.person_id');
+		$this->db->where('employees_locations.location_id', (int)$location_id);
+		$this->db->where('employees.deleted', 0);
+		$this->db->order_by('people.last_name', 'asc');
+		$this->db->order_by('people.first_name', 'asc');
+		return $this->db->get()->result();
+	}
+
 	function clock_in($comment, $employee_id = false, $location_id = false)
 	{
 		if ($employee_id === FALSE)
