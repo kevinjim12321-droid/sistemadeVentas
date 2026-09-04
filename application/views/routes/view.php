@@ -1,14 +1,29 @@
 <?php $this->load->view('partial/header'); ?>
 
 <div class="panel panel-piluku">
-	<div class="panel-heading"><h3 class="panel-title"><?php echo H($route->name); ?> — <?php echo H($route->route_date); ?></h3></div>
+	<div class="panel-heading">
+		<h3 class="panel-title"><?php echo H($route->name); ?> — <?php echo H($route->route_date); ?>
+			<?php echo $route->status === 'open' ? '<span class="label label-success" style="margin-left:8px">'.lang('routes_status_open').'</span>' : '<span class="label label-default" style="margin-left:8px">'.lang('routes_status_closed').'</span>'; ?>
+		</h3>
+	</div>
 	<div class="panel-body">
-		<p><strong><?php echo lang('routes_seller'); ?>:</strong> <?php echo H(trim($route->first_name.' '.$route->last_name)); ?> &nbsp; <strong><?php echo lang('common_status'); ?>:</strong> <?php echo $route->status === 'open' ? lang('routes_status_open') : lang('routes_status_closed'); ?></p>
-		<p><strong>Ventas realizadas:</strong> <?php echo (int)$sales_summary->sale_count; ?> &nbsp; <strong>Total vendido:</strong> <?php echo to_currency($sales_summary->total); ?></p>
-		<?php if ($route->status === 'open') { ?><p><?php echo anchor('routes/sell/'.$route->route_id, '<span class="ion-cash"></span> Vender desde esta ruta', array('class'=>'btn btn-success')); ?> <?php echo anchor('routes/purchase/'.$route->route_id, '<span class="ion-plus"></span> Comprar para esta ruta', array('class'=>'btn btn-primary')); ?></p><?php } ?>
-		<?php if ($route->notes) { ?><p><strong><?php echo lang('common_comments'); ?>:</strong> <?php echo nl2br(H($route->notes)); ?></p><?php } ?>
 		<?php if ($this->session->flashdata('route_success')) { ?><div class="alert alert-success"><?php echo H($this->session->flashdata('route_success')); ?></div><?php } ?>
 		<?php if ($this->session->flashdata('route_error')) { ?><div class="alert alert-danger"><?php echo H($this->session->flashdata('route_error')); ?></div><?php } ?>
+
+		<div class="row" style="margin-bottom:14px">
+			<div class="col-sm-4"><strong><?php echo lang('routes_seller'); ?></strong><br><?php echo H(trim($route->first_name.' '.$route->last_name)); ?></div>
+			<div class="col-sm-4"><strong>Ventas realizadas</strong><br><?php echo (int)$sales_summary->sale_count; ?></div>
+			<div class="col-sm-4"><strong>Total vendido</strong><br><?php echo to_currency($sales_summary->total); ?></div>
+		</div>
+
+		<?php if ($route->notes) { ?><p><strong><?php echo lang('common_comments'); ?>:</strong> <?php echo nl2br(H($route->notes)); ?></p><?php } ?>
+
+		<?php if ($route->status === 'open') { ?>
+		<div style="margin-top:10px">
+			<?php echo anchor('routes/sell/'.$route->route_id, '<span class="ion-cash"></span> Vender desde esta ruta', array('class'=>'btn btn-success')); ?>
+			<?php echo anchor('routes/purchase/'.$route->route_id, '<span class="ion-plus"></span> Comprar para esta ruta', array('class'=>'btn btn-primary')); ?>
+		</div>
+		<?php } ?>
 	</div>
 </div>
 
@@ -100,6 +115,7 @@
 		</div>
 
 		<?php if ($route->status === 'open') { ?>
+		<hr>
 		<div class="row">
 			<div class="col-sm-6">
 				<h4><?php echo lang('routes_cash_add'); ?></h4>
@@ -120,7 +136,8 @@
 		</div>
 		<?php } ?>
 
-		<h4 style="margin-top:20px"><?php echo lang('routes_expenses_title'); ?></h4>
+		<hr>
+		<h4 style="margin-top:6px"><?php echo lang('routes_expenses_title'); ?></h4>
 		<div class="table-responsive">
 		<table class="table table-striped table-bordered">
 			<thead><tr><th><?php echo lang('common_date'); ?></th><th><?php echo lang('common_description'); ?></th><th><?php echo lang('routes_seller'); ?></th><th class="text-right"><?php echo lang('common_amount'); ?></th></tr></thead>
@@ -138,7 +155,8 @@
 		</table>
 		</div>
 
-		<h4 style="margin-top:20px"><?php echo lang('routes_collections_title'); ?></h4>
+		<hr>
+		<h4 style="margin-top:6px"><?php echo lang('routes_collections_title'); ?></h4>
 		<?php if ($route->status === 'open') { ?>
 		<p class="text-muted"><?php echo lang('routes_collections_hint'); ?></p>
 		<?php } ?>

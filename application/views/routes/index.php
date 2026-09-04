@@ -1,36 +1,91 @@
 <?php $this->load->view('partial/header'); ?>
 
+<?php
+//Display-only grouping for this page: split the routes the controller already
+//fetched into open/closed lists, and resolve the current location's name for
+//the new "Sucursal" column. No functional/business logic here -- the actual
+//route rules live in Routes.php / Route.php (Fases 1-3), unchanged.
+$logged_employee_id = (int)$this->Employee->get_logged_in_employee_info()->person_id;
+$current_location = $this->Location->get_info($this->Employee->get_logged_in_employee_current_location_id());
+$open_routes = array();
+$closed_routes = array();
+foreach ($routes as $route)
+{
+	if ($route->status === 'open') { $open_routes[] = $route; }
+	else { $closed_routes[] = $route; }
+}
+?>
+
 <div class="panel panel-piluku">
 	<div class="panel-heading"><h3 class="panel-title"><?php echo lang('routes_title'); ?></h3></div>
 	<div class="panel-body">
+		<?php if ($this->session->flashdata('route_success')) { ?><div class="alert alert-success"><?php echo H($this->session->flashdata('route_success')); ?></div><?php } ?>
 		<?php if ($this->session->flashdata('route_error')) { ?><div class="alert alert-danger"><?php echo H($this->session->flashdata('route_error')); ?></div><?php } ?>
-		<p><?php echo lang('routes_intro'); ?></p>
+		<p class="text-muted"><?php echo lang('routes_intro'); ?></p>
 		<?php echo form_open('routes/create', array('class' => 'form-horizontal')); ?>
-			<div class="form-group">
+			<div class="form-group" style="margin-bottom:18px">
 				<?php echo form_label(lang('routes_name').':', 'name', array('class'=>'col-sm-3 control-label')); ?>
 				<div class="col-sm-9"><input class="form-control" type="text" name="name" id="name" placeholder="Ruta 1" required></div>
 			</div>
-			<div class="form-group">
+			<div class="form-group" style="margin-bottom:18px">
 				<?php echo form_label(lang('common_date').':', 'route_date', array('class'=>'col-sm-3 control-label')); ?>
 				<div class="col-sm-9"><input class="form-control" type="date" name="route_date" id="route_date" value="<?php echo date('Y-m-d'); ?>" required></div>
 			</div>
-			<div class="form-group">
+			<div class="form-group" style="margin-bottom:18px">
 				<?php echo form_label(lang('routes_seller').':', 'employee_id', array('class'=>'col-sm-3 control-label')); ?>
 				<div class="col-sm-9"><select class="form-control" name="employee_id" id="employee_id" required>
 					<option value=""><?php echo lang('routes_select_seller'); ?></option>
 					<?php foreach ($employees as $employee) { ?><option value="<?php echo (int)$employee->person_id; ?>"><?php echo H($employee->first_name.' '.$employee->last_name); ?></option><?php } ?>
 				</select></div>
 			</div>
-			<div class="form-group">
+			<div class="form-group" style="margin-bottom:18px">
 				<?php echo form_label(lang('routes_cash_opening_field').':', 'opening_cash', array('class'=>'col-sm-3 control-label')); ?>
 				<div class="col-sm-9"><input class="form-control" type="number" min="0" step="any" name="opening_cash" id="opening_cash" placeholder="0.00"></div>
 			</div>
-			<div class="form-group">
+			<div class="form-group" style="margin-bottom:8px">
 				<?php echo form_label(lang('common_comments').':', 'notes', array('class'=>'col-sm-3 control-label')); ?>
 				<div class="col-sm-9"><textarea class="form-control" name="notes" id="notes" rows="2"></textarea></div>
 			</div>
+			<hr>
 			<div class="text-right"><button class="btn btn-primary" type="submit"><?php echo lang('routes_open'); ?></button></div>
 		<?php echo form_close(); ?>
+	</div>
+</div>
+
+<div class="panel panel-piluku">
+	<div class="panel-heading"><h3 class="panel-title">Rutas abiertas <span class="badge"><?php echo count($open_routes); ?></span></h3></div>
+	<div class="panel-body table-responsive">
+		<table class="table table-striped table-bordered">
+			<thead><tr>
+				<th>#</th>
+				<th><?php echo lang('routes_name'); ?></th>
+				<th><?php echo lang('common_date'); ?></th>
+				<th><?php echo lang('routes_seller'); ?></th>
+				<th>Sucursal</th>
+				<th><?php echo lang('common_status'); ?></th>
+				<th><?php echo lang('common_actions'); ?></th>
+			</tr></thead>
+			<tbody>
+			<?php foreach ($open_routes as $route) { ?>
+			<tr>
+				<td><?php echo (int)$route->route_id; ?></td>
+				<td><?php echo H($route->name); ?></td>
+				<td><?php echo H($route->route_date); ?></td>
+				<td><?php echo H(trim($route->first_name.' '.$route->last_name)); ?></td>
+				<td><?php echo H($current_location ? $current_location->name : ''); ?></td>
+				<td><span class="label label-success"><?php echo lang('routes_status_open'); ?></span></td>
+				<td>
+					<?php echo anchor('routes/view/'.$route->route_id, lang('common_view'), array('class'=>'btn btn-primary btn-xs')); ?>
+					<?php echo anchor('routes/close_form/'.$route->route_id, lang('routes_close'), array('class'=>'btn btn-danger btn-xs')); ?>
+					<?php if ((int)$route->employee_id === $logged_employee_id) { ?>
+					<?php echo anchor('routes/sell/'.$route->route_id, 'Ir a venta', array('class'=>'btn btn-success btn-xs')); ?>
+					<?php } ?>
+				</td>
+			</tr>
+			<?php } ?>
+			<?php if (!$open_routes) { ?><tr><td colspan="7" class="text-center">No hay rutas abiertas.</td></tr><?php } ?>
+			</tbody>
+		</table>
 	</div>
 </div>
 
@@ -38,17 +93,28 @@
 	<div class="panel-heading"><h3 class="panel-title"><?php echo lang('routes_history'); ?></h3></div>
 	<div class="panel-body table-responsive">
 		<table class="table table-striped table-bordered">
-			<thead><tr><th>#</th><th><?php echo lang('routes_name'); ?></th><th><?php echo lang('common_date'); ?></th><th><?php echo lang('routes_seller'); ?></th><th><?php echo lang('common_status'); ?></th><th><?php echo lang('common_actions'); ?></th></tr></thead>
+			<thead><tr>
+				<th>#</th>
+				<th><?php echo lang('routes_name'); ?></th>
+				<th><?php echo lang('common_date'); ?></th>
+				<th><?php echo lang('routes_seller'); ?></th>
+				<th>Sucursal</th>
+				<th><?php echo lang('common_status'); ?></th>
+				<th><?php echo lang('common_view'); ?></th>
+			</tr></thead>
 			<tbody>
-			<?php foreach ($routes as $route) { ?><tr>
+			<?php foreach ($closed_routes as $route) { ?>
+			<tr>
 				<td><?php echo (int)$route->route_id; ?></td>
 				<td><?php echo H($route->name); ?></td>
 				<td><?php echo H($route->route_date); ?></td>
 				<td><?php echo H(trim($route->first_name.' '.$route->last_name)); ?></td>
-				<td><?php echo $route->status === 'open' ? lang('routes_status_open') : lang('routes_status_closed'); ?></td>
+				<td><?php echo H($current_location ? $current_location->name : ''); ?></td>
+				<td><span class="label label-default"><?php echo lang('routes_status_closed'); ?></span></td>
 				<td><?php echo anchor('routes/view/'.$route->route_id, lang('common_view'), array('class'=>'btn btn-primary btn-xs')); ?></td>
-			</tr><?php } ?>
-			<?php if (!$routes) { ?><tr><td colspan="6" class="text-center"><?php echo lang('routes_empty'); ?></td></tr><?php } ?>
+			</tr>
+			<?php } ?>
+			<?php if (!$closed_routes) { ?><tr><td colspan="7" class="text-center"><?php echo lang('routes_empty'); ?></td></tr><?php } ?>
 			</tbody>
 		</table>
 	</div>
@@ -57,10 +123,10 @@
 <div class="panel panel-piluku">
 	<div class="panel-heading"><h3 class="panel-title"><?php echo lang('routes_range_summary'); ?></h3></div>
 	<div class="panel-body">
-		<form method="get" action="<?php echo site_url('routes'); ?>" class="form-inline" style="margin-bottom:15px">
-			<label><?php echo lang('routes_date_range'); ?>:</label>
-			<input class="form-control" type="date" name="start_date" value="<?php echo H($summary_start); ?>">
-			<input class="form-control" type="date" name="end_date" value="<?php echo H($summary_end); ?>">
+		<form method="get" action="<?php echo site_url('routes'); ?>" class="form-inline" style="margin-bottom:18px">
+			<label style="margin-right:8px"><?php echo lang('routes_date_range'); ?>:</label>
+			<input class="form-control" type="date" name="start_date" value="<?php echo H($summary_start); ?>" style="margin-right:6px">
+			<input class="form-control" type="date" name="end_date" value="<?php echo H($summary_end); ?>" style="margin-right:6px">
 			<button class="btn btn-primary" type="submit"><?php echo lang('common_submit'); ?></button>
 		</form>
 
@@ -88,7 +154,7 @@
 				<td><?php echo anchor('routes/view/'.$r->route->route_id, H($r->route->name)); ?></td>
 				<td><?php echo H($r->route->route_date); ?></td>
 				<td><?php echo H(trim($r->route->first_name.' '.$r->route->last_name)); ?></td>
-				<td><?php echo $r->route->status === 'open' ? lang('routes_status_open') : lang('routes_status_closed'); ?></td>
+				<td><?php echo $r->route->status === 'open' ? '<span class="label label-success">'.lang('routes_status_open').'</span>' : '<span class="label label-default">'.lang('routes_status_closed').'</span>'; ?></td>
 				<td class="text-right"><?php echo to_currency($r->sold); ?></td>
 				<td class="text-right"><?php echo to_currency($r->cash); ?></td>
 				<td class="text-right"><?php echo to_currency($r->credit); ?></td>
