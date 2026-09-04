@@ -3291,7 +3291,15 @@ class Sales extends Secure_area
 	}
 	
 	function _reload($data=array(), $is_ajax = true)
-	{	
+	{
+		// Fase 5 fix: route_blocked/route_blocked_reason are computed once in
+		// __construct(). An action that mutates the cart within the same
+		// request (e.g. cancel_sale(), delete_item() emptying it) and then
+		// calls _reload() would otherwise re-render the register with a
+		// stale blocked banner. Recompute against the cart's current state
+		// right before every re-render.
+		$this->_sync_route_context();
+
 		// Keep the displayed sale price synchronized with the lots that FIFO/FEFO
 		// will actually consume when the sale is completed.
 		if ($this->cart->refresh_inventory_lot_prices())
